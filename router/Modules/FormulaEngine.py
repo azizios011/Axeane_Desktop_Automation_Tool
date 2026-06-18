@@ -1,6 +1,6 @@
 # Modules/FormulaEngine.py
 from Logic.accounts import AccountManager
-from Logic.rules import RulesEngine
+from Logic.Rules import RulesEngine
 from Debug.Logger import ColorLogger as log
 from collections import defaultdict
 

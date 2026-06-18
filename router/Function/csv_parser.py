@@ -33,7 +33,8 @@ def parse_vente_csv(file_path: str) -> list:
     csv_headers = []
     
     try:
-        with open(file_path, mode='r', encoding='utf-8') as f:
+        # FIX: Use 'utf-8-sig' encoding to automatically strip BOM character
+        with open(file_path, mode='r', encoding='utf-8-sig') as f:
             # Sniff delimiter just in case, but default to comma
             sample = f.read(2048)
             f.seek(0)
@@ -44,10 +45,17 @@ def parse_vente_csv(file_path: str) -> list:
                 
             reader = csv.DictReader(f, dialect=dialect)
             csv_headers = reader.fieldnames
+            
+            # FIX: Strip BOM and whitespace from headers
+            csv_headers = [h.strip().lstrip('\ufeff') for h in csv_headers]
+            
             log.info(f"CSV Headers found (in order): {csv_headers}")
             
             for row_num, row in enumerate(reader, start=2): # start=2 because row 1 is header
                 try:
+                    # Strip BOM from all keys in the row
+                    row = {k.strip().lstrip('\ufeff'): v for k, v in row.items()}
+                    
                     # Skip Grand Total row (check if Reference column is empty or contains "Grand Total")
                     ref_val = row.get("Reference", "").strip()
                     if not ref_val or ref_val.lower() == "grand total":
@@ -58,12 +66,12 @@ def parse_vente_csv(file_path: str) -> list:
                     parsed_row = {}
                     for csv_col in csv_headers:
                         csv_col_stripped = csv_col.strip()
-                        val = row.get(csv_col, "").strip() if row.get(csv_col) else ""
+                        val = row.get(csv_col_stripped, "").strip() if row.get(csv_col_stripped) else ""
                         
                         # Type conversion based on internal key mapping
                         internal_key = col_map.get(csv_col_stripped, csv_col_stripped)
                         
-                        if internal_key in ["net_ht", "tva_amt", "ttc", "ht", "remise", "net_ht_raw", "fodec"]:
+                        if internal_key in ["net_ht", "tva_amt", "ttc", "ht_brut", "remise", "net_ht_raw", "fodec"]:
                             # Handle thousand separators (commas) and decimal points
                             val = float(val.replace(",", "").replace(" ", "")) if val else 0.0
                         elif internal_key == "tva_rate":
@@ -83,5 +91,5 @@ def parse_vente_csv(file_path: str) -> list:
         return []
         
     log.success(f"CSV parsing complete. {len(data)} rows loaded, {errors} errors.")
-    return data, csv_headers  # Return both data and headers
+    return data
     

@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from Modules.CDP_Setting import CDPManager
+from Modules.AxeaneOrchestrator import AxeaneOrchestrator
 import threading
 import asyncio
 
@@ -62,37 +63,51 @@ class ExecutionTab:
         threading.Thread(target=self._run_playwright_loop, daemon=True).start()
 
     def _run_playwright_loop(self):
-        """
-        This is where you integrate your Moduls/Session.py and Models/
-        """
-        cdp_manager = CDPManager(self.state["config"]["cdp_settings"])
-        browser, page = cdp_manager.get_browser_and_page()
-        
+        """The real execution loop using AxeaneOrchestrator."""
         try:
-            total_entries = len(self.state["parsed_entries"])
-            self._append_log(f"Found {total_entries} lines to process.", "INFO")
-            
-            # MOCK LOOP FOR DEMONSTRATION
-            for i in range(total_entries):
-                if not self.state["is_running"]:
-                    self._append_log("Execution cancelled by user.", "ERROR")
-                    break
-                    
-                entry = self.state["parsed_entries"][i]
-                self._append_log(f"Processing {entry['ref']} | {entry['account']} | {entry['label']}", "NETWORK")
-                
-                # Simulate Playwright work
-                import time
-                time.sleep(0.2) 
-                
-                # Update Progress Bar safely
-                progress_val = ((i + 1) / total_entries) * 100
-                self.root.after(0, self._update_progress, progress_val)
+            cards = self.state.get("formula_cards", [])
+            if not cards:
+                self._append_log("No formula cards found. Generate formulas first!", "ERROR")
+                return
 
-            self._append_log("✅ Automation completed successfully!", "SUCCESS")
-            
+            self._append_log(f"Found {len(cards)} formula cards to process.", "INFO")
+
+            # Launch browser
+            cdp_settings = self.state["config"].get("cdp_settings", {})
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            async def _run():
+                cdp = CDPManager(cdp_settings)
+                browser, page = await cdp.get_browser_and_page()
+                try:
+                    # Navigate to the writing screen if not already there
+                    if "ecritureComponentModele" not in page.url:
+                        self._append_log("Navigating to Saisie des écritures...", "INFO")
+                        await page.goto("https://kompta.axeane.com/views/comptageneral/traitement/ecritures/ecranEcritureMainModele2.html")
+                        await page.wait_for_timeout(3000)
+
+                    # Create orchestrator
+                    orchestrator = AxeaneOrchestrator(page, self.state)
+
+                    # Progress callback
+                    def on_progress(current, total, success, failed):
+                        pct = (current / total) * 100
+                        self.root.after(0, self._update_progress, pct)
+                        self._append_log(f"[{current}/{total}] {success}✓ {failed}✗", "INFO")
+
+                    # Run!
+                    success, failed = await orchestrator.run_all(cards, on_progress)
+                    self._append_log(f"🏁 Complete: {success} succeeded, {failed} failed", "SUCCESS")
+
+                finally:
+                    await cdp.cleanup(browser)
+
+            loop.run_until_complete(_run())
+            loop.close()
+
         except Exception as e:
-            self._append_log(f"❌ Fatal Error: {str(e)}", "ERROR")
+            self._append_log(f"❌ Fatal: {e}", "ERROR")
         finally:
             self.root.after(0, self._reset_ui)
 
