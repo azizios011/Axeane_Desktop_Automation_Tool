@@ -19,36 +19,41 @@
         "account_source": "formats.compte_client",
         "amount": "ttc",
         "side": "debit",
-        "reverse_on_avoir": true
+        "reverse_on_avoir": true,
+        "apply_once_per_group": true
       },
       {
         "step": "tax_split",
         "account_source": "rules.tax_logic",
         "amount": "tva_amt",
         "side": "credit",
-        "reverse_on_avoir": true
+        "reverse_on_avoir": true,
+        "apply_per_rate": true
       },
       {
         "step": "revenue_split",
         "account_source": "rules.tax_logic",
         "amount": "net_ht",
         "side": "credit",
-        "reverse_on_avoir": true
+        "reverse_on_avoir": true,
+        "apply_per_rate": true
       },
       {
         "step": "timbre",
         "condition": "formats.use_timbre == true",
         "account": "rules.timbre_fiscal.account",
         "amount": "rules.timbre_fiscal.default_amount",
-        "side": "credit"
+        "side": "credit",
+        "apply_once_per_group": true
       },
       {
         "step": "cash_reroute",
         "condition": "formats.use_cash == true",
         "actions": [
           { "account": "formats.compte_client", "side": "credit", "amount": "ttc" },
-          { "account": "formats.compte_caisse",  "side": "debit",  "amount": "ttc" }
-        ]
+          { "account": "541100", "side": "debit", "amount": "ttc" }
+        ],
+        "apply_once_per_group": true
       }
     ]
   }

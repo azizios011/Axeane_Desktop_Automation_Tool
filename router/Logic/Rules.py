@@ -1,4 +1,4 @@
-# Logic/rules.py
+# Logic/Rules.py
 import json
 import os
 from Debug.Logger import ColorLogger as log
@@ -7,7 +7,7 @@ from Debug.Logger import ColorLogger as log
 class RulesEngine:
     """
     Dynamically loads accounting rules from Vente_Rules.json.
-    Nothing is hardcoded — edit the JSON and the engine adapts.
+    Handles multi-TVA rate invoices (e.g., 7% + 19% on same reference).
     """
 
     def __init__(self, rules_path="DB/Vente_Rules.json"):
@@ -15,9 +15,6 @@ class RulesEngine:
         self.rules = {}
         self._load()
 
-    # ------------------------------------------------------------------
-    # JSON loading
-    # ------------------------------------------------------------------
     def _strip_keys(self, d):
         if isinstance(d, dict):
             return {k.strip(): self._strip_keys(v) for k, v in d.items()}
@@ -42,13 +39,9 @@ class RulesEngine:
     def reload(self):
         self._load()
 
-    # ------------------------------------------------------------------
-    # Tax lookup (from JSON tax_logic.rates)
-    # ------------------------------------------------------------------
     def get_tax_accounts(self, tva_rate: float) -> dict:
         """Returns {"ht_account": ..., "tva_account": ...} or None."""
         rates = self.rules.get("tax_logic", {}).get("rates", [])
-        # Normalize: JSON may store rate as int 19 or float 19.0
         try:
             target = float(tva_rate)
         except (TypeError, ValueError):
@@ -62,65 +55,70 @@ class RulesEngine:
                 }
         return None
 
-    # ------------------------------------------------------------------
-    # Formula generation (driven by entry_sequence)
-    # ------------------------------------------------------------------
-    def generate_formula(self, invoice: dict, profile: dict) -> list:
+    def generate_formula_for_group(self, rows_in_group: list, profile: dict) -> list:
         """
-        Reads `entry_sequence` from JSON and builds the accounting lines.
-        Returns list of dicts: {step, account, label, debit, credit}
+        Generate formula for a group of rows (same reference, possibly multiple TVA rates).
+        rows_in_group: list of (row_dict, tva_rate) tuples
         """
-        if not profile:
+        if not profile or not rows_in_group:
             return []
 
         sequence = self.rules.get("entry_sequence", [])
         timbre_cfg = self.rules.get("timbre_fiscal", {})
-        tva_rate = float(invoice.get("tva_rate", 0) or 0)
-        tax_acc = self.get_tax_accounts(tva_rate)
-
+        
+        # Use the first row for client info and TTC
+        first_row = rows_in_group[0][0]
+        ttc = float(first_row.get("ttc", 0) or 0)
+        
         lines = []
 
         for step in sequence:
             step_name = step.get("step", "")
+            apply_once = step.get("apply_once_per_group", False)
+            apply_per_rate = step.get("apply_per_rate", False)
 
             # ---- client_total ----
             if step_name == "client_total":
                 lines.append({
                     "step": "client_total",
                     "account": profile.get("compte_client"),
-                    "label": self._extract_client_label(invoice.get("client_name", "")),
-                    "debit": float(invoice.get("ttc", 0) or 0),
+                    "label": self._extract_client_label(first_row.get("client_name", "")),
+                    "debit": ttc,
                     "credit": 0.0,
                 })
 
-            # ---- tax_split ----
-            elif step_name == "tax_split":
-                if tax_acc:
-                    lines.append({
-                        "step": "tax_split",
-                        "account": tax_acc["tva_account"],
-                        "label": f"TVA {int(tva_rate)}%",
-                        "debit": 0.0,
-                        "credit": float(invoice.get("tva_amt", 0) or 0),
-                    })
-                else:
-                    log.warn(f"No TVA account configured for rate {tva_rate}%")
+            # ---- tax_split and revenue_split (apply per rate) ----
+            elif step_name in ["tax_split", "revenue_split"]:
+                if apply_per_rate:
+                    # Generate entries for EACH TVA rate in the group
+                    for row, tva_rate in rows_in_group:
+                        tax_acc = self.get_tax_accounts(tva_rate)
+                        if not tax_acc:
+                            log.warn(f"No tax accounts for rate {tva_rate}%")
+                            continue
+                        
+                        if step_name == "tax_split":
+                            tva_amt = float(row.get("tva_amt", 0) or 0)
+                            lines.append({
+                                "step": f"tax_split_{int(tva_rate)}",
+                                "account": tax_acc["tva_account"],
+                                "label": f"TVA {int(tva_rate)}%",
+                                "debit": 0.0,
+                                "credit": tva_amt,
+                            })
+                        elif step_name == "revenue_split":
+                            net_ht = float(row.get("net_ht", 0) or 0)
+                            lines.append({
+                                "step": f"revenue_split_{int(tva_rate)}",
+                                "account": tax_acc["ht_account"],
+                                "label": f"Revenue {int(tva_rate)}%",
+                                "debit": 0.0,
+                                "credit": net_ht,
+                            })
 
-            # ---- revenue_split ----
-            elif step_name == "revenue_split":
-                if tax_acc:
-                    lines.append({
-                        "step": "revenue_split",
-                        "account": tax_acc["ht_account"],
-                        "label": f"Revenue {int(tva_rate)}%",
-                        "debit": 0.0,
-                        "credit": float(invoice.get("net_ht", 0) or 0),
-                    })
-
-            # ---- timbre ----
+            # ---- timbre (apply once per group) ----
             elif step_name == "timbre":
-                cond = step.get("condition", "")
-                if self._eval_condition(cond, profile):
+                if apply_once or self._eval_condition(step.get("condition", ""), profile):
                     lines.append({
                         "step": "timbre",
                         "account": timbre_cfg.get("account"),
@@ -129,16 +127,16 @@ class RulesEngine:
                         "credit": float(timbre_cfg.get("default_amount", 1.0)),
                     })
 
-            # ---- cash_reroute ----
+            # ---- cash_reroute (apply once per group) ----
             elif step_name == "cash_reroute":
-                cond = step.get("condition", "")
-                if self._eval_condition(cond, profile):
-                    ttc = float(invoice.get("ttc", 0) or 0)
+                if apply_once or self._eval_condition(step.get("condition", ""), profile):
                     for action in step.get("actions", []):
                         acc = action.get("account")
-                        # Resolve "formats.compte_client" placeholder
                         if acc == "formats.compte_client":
                             acc = profile.get("compte_client")
+                        elif acc == "541100":
+                            acc = profile.get("compte_caisse", "541100")
+                        
                         lines.append({
                             "step": f"cash_reroute_{action.get('side')}",
                             "account": acc,
@@ -149,9 +147,6 @@ class RulesEngine:
 
         return lines
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
     def _eval_condition(self, cond: str, profile: dict) -> bool:
         """Minimal safe evaluator for conditions like 'formats.use_cash == true'."""
         if not cond:
@@ -160,14 +155,12 @@ class RulesEngine:
         if "==" not in cond:
             return False
         left, right = [x.strip() for x in cond.split("==", 1)]
-        # Resolve left side: "formats.use_cash" -> profile["use_cash"]
         if left.startswith("formats."):
             key = left.split(".", 1)[1]
             val = profile.get(key)
         else:
             val = None
 
-        # Parse right side
         right_lower = right.lower()
         if right_lower == "true":
             expected = True

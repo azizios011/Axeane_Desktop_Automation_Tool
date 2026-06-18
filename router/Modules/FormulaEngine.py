@@ -1,32 +1,32 @@
 # Modules/FormulaEngine.py
 import json
-from Logic.accounts import AccountManager
-from Logic.Rules import RulesEngine
-from Debug.Logger import ColorLogger as log
+import os
 from collections import defaultdict
+from Debug.Logger import ColorLogger as log
 
 
 class FormulaEngine:
     """
-    Groups invoice rows by client, then generates ONE formula per unique client.
-    Returns a list of FormulaCard objects.
+    Generates accounting formula cards from raw CSV data.
+    Handles both Vente (Sales) and Bank transactions.
+    Groups rows by reference (for multi-TVA invoices) or by keyword (for bank).
     """
 
     def __init__(self):
-        self.accounts = AccountManager()
-        self.rules = RulesEngine()
-        # Load column mapping to translate CSV headers to internal field names
-        self.column_mapping = self._load_column_mapping()
+        self.vente_formats = self._load_json("DB/Vente_Formats.json")
+        self.bank_formats = self._load_json("DB/Bank_Formats.json")
+        self.vente_rules = self._load_json("DB/Vente_Rules.json")
+        self.bank_rules = self._load_json("DB/Bank_Rules.json")
+        self.cards = []
 
-    def _load_column_mapping(self):
-        """Load the column mapping from Vente_Structure.json"""
-        try:
-            with open("DB/Vente_Structure.json", 'r', encoding='utf-8') as f:
-                structure = self._strip_keys(json.load(f))
-            return structure.get("column_mapping", {})
-        except Exception as e:
-            log.error(f"Failed to load column mapping: {e}")
+    def _load_json(self, path):
+        """Load JSON with automatic key stripping"""
+        if not os.path.exists(path):
+            log.error(f"File not found: {path}")
             return {}
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return self._strip_keys(data)
 
     def _strip_keys(self, d):
         """Recursively strip whitespace from dictionary keys"""
@@ -36,186 +36,386 @@ class FormulaEngine:
             return [self._strip_keys(i) for i in d]
         return d
 
-    def _get_field(self, row, field_name):
-        """
-        Get a field value from a row, trying both CSV column name and internal field name.
-        For example, to get TTC: try "TTC" first, then "ttc"
-        """
-        # Try CSV column name first
-        if field_name in row:
-            return row[field_name]
+    def _extract_client_name(self, client_field):
+        """Extract client name from CSV field like 'C000001 | PASSAGER'"""
+        if not client_field:
+            return ""
+        if " | " in client_field:
+            return client_field.split(" | ", 1)[1].strip()
+        return client_field.strip()
+
+    def _match_client_profile(self, client_name):
+        """Match client name against profiles in Vente_Formats.json"""
+        profiles = self.vente_formats.get("client_profiles", [])
         
-        # Try to find the CSV column that maps to this internal field
-        for csv_col, internal_field in self.column_mapping.items():
-            if internal_field.strip() == field_name:
-                if csv_col in row:
-                    return row[csv_col]
+        # Try to match exact client name first
+        for profile in profiles:
+            match_key = profile.get("match", "").upper()
+            if match_key == "DEFAULT":
+                continue
+            if match_key and match_key in client_name.upper():
+                return profile, "specific", match_key
         
-        # Fallback: try common variations
-        variations = {
-            "client_name": ["Client", "client"],
-            "ttc": ["TTC", "ttc"],
-            "tva_rate": ["TVA %", "tva_rate", "TVA"],
-            "tva_amt": ["Montant TVA", "tva_amt", "TVA Amount"],
-            "net_ht": ["Tot. Net. HT", "net_ht"],
-        }
+        # Fallback to DEFAULT profile
+        for profile in profiles:
+            if profile.get("match", "").upper() == "DEFAULT":
+                return profile, "default", "DEFAULT"
         
-        if field_name in variations:
-            for var in variations[field_name]:
-                if var in row:
-                    return row[var]
+        return None, "none", None
+
+    def _get_tax_accounts(self, tva_rate):
+        """Get HT and TVA accounts based on tax rate"""
+        rates = self.vente_rules.get("accounting_logic", {}).get("tax_logic", {}).get("rates", [])
+        try:
+            target = float(tva_rate)
+        except (TypeError, ValueError):
+            return None, None
+        
+        for rate_config in rates:
+            if float(rate_config.get("rate", -1)) == target:
+                return rate_config.get("ht_account"), rate_config.get("tva_account")
+        return None, None
+
+    def _match_bank_keyword(self, label):
+        """Match bank transaction label against keywords in Bank_Formats.json"""
+        mappings = self.bank_formats.get("mappings", [])
+        label_upper = label.upper() if label else ""
+        
+        for mapping in mappings:
+            keyword = mapping.get("keyword", "").upper()
+            if keyword and keyword in label_upper:
+                return mapping
         
         return None
 
-    def build_cards(self, rows: list) -> list:
+    def generate_vente_formula(self, rows_in_group):
         """
-        Process all rows and generate formula cards grouped by client.
+        Generate formula for a group of sale rows (same reference, possibly multiple TVA rates).
+        Returns list of accounting entries.
         """
-        # Group rows by client profile
-        groups = defaultdict(list)
+        if not rows_in_group:
+            return []
         
-        for row in rows:
-            # Extract client name using flexible field access
-            client_field = self._get_field(row, "client_name") or ""
+        # Use first row for client info
+        first_row = rows_in_group[0]
+        client_name = self._extract_client_name(first_row.get("client_name", ""))
+        profile, match_type, match_key = self._match_client_profile(client_name)
+        
+        if not profile:
+            log.warn(f"No profile found for client: {client_name}")
+            return []
+        
+        compte_client = profile.get("compte_client")
+        use_timbre = profile.get("use_timbre", False)
+        use_cash = profile.get("use_cash", False)
+        
+        # Calculate totals across all rows in group
+        total_ttc = sum(float(r.get("ttc", 0) or 0) for r in rows_in_group)
+        
+        lines = []
+        
+        # Step 1: Client Total (Debit TTC)
+        lines.append({
+            "step": "client_total",
+            "account": compte_client,
+            "label": client_name,
+            "debit": total_ttc,
+            "credit": 0,
+        })
+        
+        # Step 2 & 3: TVA and Revenue for each row (handle multi-TVA)
+        for row in rows_in_group:
+            tva_rate = float(row.get("tva_rate", 0) or 0)
+            tva_amt = float(row.get("tva_amt", 0) or 0)
+            net_ht = float(row.get("net_ht", 0) or 0)
             
-            # Get client profile
-            info = self.accounts.get_profile(client_field)
-            key = (info["match_key"] or "__UNMATCHED__", info["match_type"])
-            groups[key].append((row, info))
+            ht_account, tva_account = self._get_tax_accounts(tva_rate)
+            
+            if tva_account and tva_amt > 0:
+                lines.append({
+                    "step": f"tax_split_{int(tva_rate)}",
+                    "account": tva_account,
+                    "label": f"TVA {int(tva_rate)}%",
+                    "debit": 0,
+                    "credit": tva_amt,
+                })
+            
+            if ht_account and net_ht > 0:
+                lines.append({
+                    "step": f"revenue_split_{int(tva_rate)}",
+                    "account": ht_account,
+                    "label": f"Revenue {int(tva_rate)}%",
+                    "debit": 0,
+                    "credit": net_ht,
+                })
+        
+        # Step 4: Timbre Fiscal (if applicable)
+        if use_timbre:
+            timbre_cfg = self.vente_rules.get("accounting_logic", {}).get("timbre_fiscal", {})
+            timbre_account = timbre_cfg.get("account", "437000")
+            timbre_amount = float(timbre_cfg.get("default_amount", 1.0))
+            
+            lines.append({
+                "step": "timbre",
+                "account": timbre_account,
+                "label": timbre_cfg.get("label", "TIMBRE FISCAL"),
+                "debit": 0,
+                "credit": timbre_amount,
+            })
+        
+        # Step 5: Cash Reroute (if applicable)
+        if use_cash:
+            caisse_account = profile.get("compte_caisse", "541100")
+            
+            lines.append({
+                "step": "cash_reroute_credit",
+                "account": compte_client,
+                "label": "Cash reroute",
+                "debit": 0,
+                "credit": total_ttc,
+            })
+            
+            lines.append({
+                "step": "cash_reroute_debit",
+                "account": caisse_account,
+                "label": "Caisse",
+                "debit": total_ttc,
+                "credit": 0,
+            })
+        
+        return lines
 
+    def generate_bank_formula(self, row):
+        """
+        Generate formula for a single bank transaction.
+        Returns list of accounting entries.
+        """
+        label = row.get("label", "")
+        amount = float(row.get("amount", 0) or 0)
+        
+        # Match keyword
+        mapping = self._match_bank_keyword(label)
+        if not mapping:
+            log.warn(f"No mapping found for bank label: {label}")
+            return []
+        
+        # Determine inversion logic
+        is_expense = amount < 0
+        inversion = self.bank_rules.get("inversion_logic", {})
+        
+        if is_expense:
+            logic = inversion.get("doc_debit_means", {})
+            bank_action = logic.get("bank_action", "credit")
+            counterpart_action = logic.get("counterpart_action", "debit")
+        else:
+            logic = inversion.get("doc_credit_means", {})
+            bank_action = logic.get("bank_action", "debit")
+            counterpart_action = logic.get("counterpart_action", "credit")
+        
+        bank_pivot = self.bank_rules.get("bank_account_pivot", "532100")
+        abs_amount = abs(amount)
+        
+        lines = []
+        
+        # Bank pivot line
+        lines.append({
+            "step": "bank_pivot",
+            "account": bank_pivot,
+            "label": label,
+            "debit": abs_amount if bank_action == "debit" else 0,
+            "credit": abs_amount if bank_action == "credit" else 0,
+        })
+        
+        # Counterpart line(s)
+        if mapping.get("is_split"):
+            # Handle TVA split
+            tax_calc = self.bank_rules.get("tax_calculation", {})
+            detect_keyword = tax_calc.get("detect_keyword", "DONT TVA:")
+            
+            if detect_keyword.upper() in label.upper():
+                # Extract TVA amount from label
+                try:
+                    tva_part = label.split(detect_keyword)[-1].strip()
+                    tva_amt = float(tva_part.replace(",", "").replace(" ", ""))
+                    base_amt = abs_amount - tva_amt
+                    
+                    base_account = mapping.get("base_account", tax_calc.get("base_account", "627000"))
+                    tax_account = mapping.get("tax_account", tax_calc.get("default_tax_account", "436619"))
+                    
+                    lines.append({
+                        "step": "base",
+                        "account": base_account,
+                        "label": mapping.get("label", "Base"),
+                        "debit": base_amt if counterpart_action == "debit" else 0,
+                        "credit": base_amt if counterpart_action == "credit" else 0,
+                    })
+                    
+                    lines.append({
+                        "step": "tax",
+                        "account": tax_account,
+                        "label": "TVA",
+                        "debit": tva_amt if counterpart_action == "debit" else 0,
+                        "credit": tva_amt if counterpart_action == "credit" else 0,
+                    })
+                except Exception as e:
+                    log.error(f"Failed to parse TVA split: {e}")
+                    # Fallback to single line
+                    lines.append({
+                        "step": "counterpart",
+                        "account": mapping.get("account", "627000"),
+                        "label": mapping.get("label", "Unknown"),
+                        "debit": abs_amount if counterpart_action == "debit" else 0,
+                        "credit": abs_amount if counterpart_action == "credit" else 0,
+                    })
+            else:
+                # No TVA detected, use single line
+                lines.append({
+                    "step": "counterpart",
+                    "account": mapping.get("account", "627000"),
+                    "label": mapping.get("label", "Unknown"),
+                    "debit": abs_amount if counterpart_action == "debit" else 0,
+                    "credit": abs_amount if counterpart_action == "credit" else 0,
+                })
+        else:
+            # Single counterpart line
+            lines.append({
+                "step": "counterpart",
+                "account": mapping.get("account", "627000"),
+                "label": mapping.get("label", "Unknown"),
+                "debit": abs_amount if counterpart_action == "debit" else 0,
+                "credit": abs_amount if counterpart_action == "credit" else 0,
+            })
+        
+        return lines
+
+    def build_vente_cards(self, rows):
+        """
+        Build formula cards for sale transactions.
+        Groups rows by reference to handle multi-TVA invoices.
+        """
+        log.info(f"Building vente cards for {len(rows)} rows...")
+        
+        # Group by reference
+        ref_groups = defaultdict(list)
+        for row in rows:
+            ref = row.get("ref", "UNKNOWN")
+            ref_groups[ref].append(row)
+        
         cards = []
-        for (match_key, match_type), items in groups.items():
-            # Use the first row as the sample for formula generation
-            sample_row, sample_info = items[0]
-            profile = sample_info["profile"]
-
-            # Generate the formula
-            formula_lines = self._generate_formula(sample_row, profile)
-
+        for ref, rows_in_ref in ref_groups.items():
+            # Generate formula for this reference group
+            formula_lines = self.generate_vente_formula(rows_in_ref)
+            
+            # Extract client info from first row
+            first_row = rows_in_ref[0]
+            client_name = self._extract_client_name(first_row.get("client_name", ""))
+            profile, match_type, match_key = self._match_client_profile(client_name)
+            
             # Calculate totals
-            total_ttc = sum(float(self._get_field(r, "ttc") or 0) for r, _ in items)
+            total_ttc = sum(float(r.get("ttc", 0) or 0) for r in rows_in_ref)
             total_debit = sum(l["debit"] for l in formula_lines)
             total_credit = sum(l["credit"] for l in formula_lines)
             is_balanced = abs(total_debit - total_credit) < 0.01
-
-            cards.append({
+            
+            # Count unique TVA rates
+            tva_rates = sorted(set(float(r.get("tva_rate", 0) or 0) for r in rows_in_ref if float(r.get("tva_rate", 0) or 0) > 0))
+            
+            card = {
+                "ref": ref,
+                "client_name": client_name,
                 "match_key": match_key,
                 "match_type": match_type,
                 "profile": profile,
-                "row_count": len(items),
+                "row_count": len(rows_in_ref),
+                "tva_rates": tva_rates,
                 "total_ttc": total_ttc,
                 "formula_lines": formula_lines,
                 "total_debit": total_debit,
                 "total_credit": total_credit,
                 "is_balanced": is_balanced,
-                "sample_client": client_field,
-            })
-
-        # Sort: specific first, then default, then unmatched
-        priority = {"specific": 0, "default": 1, "none": 2}
-        cards.sort(key=lambda c: (priority.get(c["match_type"], 9), -c["row_count"]))
-
-        log.success(f"Built {len(cards)} formula cards covering {len(rows)} rows")
+            }
+            
+            cards.append(card)
+        
+        # Sort by reference
+        cards.sort(key=lambda c: c["ref"])
+        
+        log.success(f"Built {len(cards)} vente cards")
         for c in cards:
-            log.info(f"  • [{c['match_type'].upper():8s}] {c['match_key']:30s} "
-                     f"→ {c['row_count']:3d} rows, TTC {c['total_ttc']:>11.3f}")
-
+            rates_str = "+".join(f"{int(r)}%" for r in c["tva_rates"]) if c["tva_rates"] else "N/A"
+            balance_str = "✓" if c["is_balanced"] else "✗"
+            log.info(f"  • {c['ref']:15s} | {c['match_key']:20s} | TVA: {rates_str:10s} | {c['row_count']} rows | TTC {c['total_ttc']:>11.3f} | {balance_str}")
+        
         return cards
 
-    def _generate_formula(self, row, profile):
+    def build_bank_cards(self, rows):
         """
-        Generate the accounting formula (journal entries) for one invoice.
+        Build formula cards for bank transactions.
+        Each row is a separate card (no grouping).
         """
-        if not profile:
-            return []
-
-        lines = []
+        log.info(f"Building bank cards for {len(rows)} rows...")
         
-        # Extract amounts using flexible field access
-        ttc = float(self._get_field(row, "ttc") or 0)
-        tva_amt = float(self._get_field(row, "tva_amt") or 0)
-        net_ht = float(self._get_field(row, "net_ht") or 0)
-        tva_rate = float(self._get_field(row, "tva_rate") or 0)
-
-        if ttc == 0:
-            log.warn(f"Row has TTC=0, skipping formula generation")
-            return []
-
-        # Get tax accounts based on TVA rate
-        tax_acc = self.rules.get_tax_accounts(tva_rate)
+        cards = []
+        for row in rows:
+            formula_lines = self.generate_bank_formula(row)
+            
+            # Extract info
+            label = row.get("label", "")
+            amount = float(row.get("amount", 0) or 0)
+            mapping = self._match_bank_keyword(label)
+            
+            # Calculate totals
+            total_debit = sum(l["debit"] for l in formula_lines)
+            total_credit = sum(l["credit"] for l in formula_lines)
+            is_balanced = abs(total_debit - total_credit) < 0.01
+            
+            card = {
+                "ref": row.get("ref", "UNKNOWN"),
+                "label": label,
+                "match_key": mapping.get("keyword", "UNKNOWN") if mapping else "NO MATCH",
+                "match_type": "specific" if mapping else "none",
+                "mapping": mapping,
+                "row_count": 1,
+                "total_amount": amount,
+                "formula_lines": formula_lines,
+                "total_debit": total_debit,
+                "total_credit": total_credit,
+                "is_balanced": is_balanced,
+            }
+            
+            cards.append(card)
         
-        if not tax_acc and tva_rate > 0:
-            log.warn(f"No tax accounts configured for TVA rate {tva_rate}%")
+        log.success(f"Built {len(cards)} bank cards")
+        
+        return cards
 
-        # Step 1: Client Total (Debit TTC)
-        lines.append({
-            "step": "client_total",
-            "account": profile.get("compte_client"),
-            "label": self._extract_client_label(self._get_field(row, "client_name") or ""),
-            "debit": ttc,
-            "credit": 0,
-        })
+    def build_cards(self, rows, doc_type="Vente"):
+        """
+        Main entry point. Builds formula cards based on document type.
+        """
+        self.cards = []
+        
+        if doc_type == "Vente":
+            self.cards = self.build_vente_cards(rows)
+        elif doc_type == "Bank":
+            self.cards = self.build_bank_cards(rows)
+        else:
+            log.error(f"Unknown document type: {doc_type}")
+        
+        return self.cards
 
-        # Step 2: TVA Split (Credit TVA)
-        if tax_acc and tva_amt > 0:
-            lines.append({
-                "step": "tax_split",
-                "account": tax_acc["tva_account"],
-                "label": f"TVA {int(tva_rate)}%",
-                "debit": 0,
-                "credit": tva_amt,
-            })
-
-        # Step 3: Revenue Split (Credit HT)
-        if tax_acc and net_ht > 0:
-            lines.append({
-                "step": "revenue_split",
-                "account": tax_acc["ht_account"],
-                "label": f"Revenue {int(tva_rate)}%",
-                "debit": 0,
-                "credit": net_ht,
-            })
-
-        # Step 4: Timbre Fiscal (if applicable)
-        if profile.get("use_timbre"):
-            timbre_config = self.rules.rules.get("timbre_fiscal", {})
-            timbre_amount = float(timbre_config.get("default_amount", 1.0))
-            timbre_account = timbre_config.get("account", "437000")
-            
-            lines.append({
-                "step": "timbre",
-                "account": timbre_account,
-                "label": "TIMBRE FISCAL",
-                "debit": 0,
-                "credit": timbre_amount,
-            })
-
-        # Step 5: Cash Reroute (if applicable)
-        if profile.get("use_cash"):
-            caisse_account = profile.get("compte_caisse", "541100")
-            
-            # Credit client account
-            lines.append({
-                "step": "cash_reroute_credit",
-                "account": profile.get("compte_client"),
-                "label": "Cash reroute",
-                "debit": 0,
-                "credit": ttc,
-            })
-            
-            # Debit caisse account
-            lines.append({
-                "step": "cash_reroute_debit",
-                "account": caisse_account,
-                "label": "Caisse",
-                "debit": ttc,
-                "credit": 0,
-            })
-
-        return lines
-
-    def _extract_client_label(self, client_field):
-        """Extract clean client name from field like 'C000001 | PASSAGER'"""
-        if " | " in client_field:
-            return client_field.split(" | ", 1)[1].strip()
-        return client_field.strip()
+    def get_summary(self):
+        """Get a summary of all generated cards"""
+        if not self.cards:
+            return {}
+        
+        total_rows = sum(c["row_count"] for c in self.cards)
+        balanced_count = sum(1 for c in self.cards if c["is_balanced"])
+        
+        return {
+            "total_cards": len(self.cards),
+            "total_rows": total_rows,
+            "balanced_cards": balanced_count,
+            "unbalanced_cards": len(self.cards) - balanced_count,
+        }
+        

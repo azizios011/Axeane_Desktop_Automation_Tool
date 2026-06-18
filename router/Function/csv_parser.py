@@ -131,12 +131,16 @@ def parse_vente_csv(file_path: str) -> tuple:
                         if internal_key in ["net_ht", "tva_amt", "ttc", "ht_brut", "remise", "net_ht_raw", "fodec"]:
                             parsed_val = parse_number(val)
                             parsed_row[csv_col_stripped] = parsed_val
+                            parsed_row[internal_key] = parsed_val
                         elif internal_key == "tva_rate":
                             parsed_val = parse_percentage(val)
                             parsed_row[csv_col_stripped] = parsed_val
+                            parsed_row[internal_key] = parsed_val
                         else:
                             # Keep as string, strip if it's a string
-                            parsed_row[csv_col_stripped] = val.strip() if isinstance(val, str) else val
+                            parsed_val = val.strip() if isinstance(val, str) else val
+                            parsed_row[csv_col_stripped] = parsed_val
+                            parsed_row[internal_key] = parsed_val
                             
                     data.append(parsed_row)
                     

@@ -157,13 +157,14 @@ class ReviewAndRulesTab:
                  font=("Segoe UI", 9, "bold")).pack(side="left")
 
         tk.Label(header,
-                 text=f"  {card['match_key']}",
+                 text=f"  Ref: {card['ref']} | {card['match_key']}",
                  bg=bg, fg="#1F2937",
                  font=("Segoe UI", 13, "bold")).pack(side="left")
 
         # Row count pill
+        rates_str = "+".join(f"{int(r)}%" for r in card.get("tva_rates", [])) if card.get("tva_rates") else "—"
         pill = tk.Label(header,
-                        text=f"  {card['row_count']} rows  ",
+                        text=f"  {card['row_count']} rows | TVA: {rates_str}  ",
                         bg=header_fg, fg="white",
                         font=("Segoe UI", 9, "bold"),
                         padx=8, pady=2)
