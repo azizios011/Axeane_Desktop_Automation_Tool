@@ -9,17 +9,30 @@ class TableTab:
         self._build_ui()
 
     def _build_ui(self):
-        title = ttk.Label(self.frame, text="Generated Accounting Formulas (Rules Applied)", 
-                          font=("Segoe UI", 14, "bold"))
-        title.pack(pady=10, padx=20, anchor="w")
+        # 1. Title (using pack)
+        title = ttk.Label(
+            self.frame, 
+            text="Generated Accounting Formulas (Rules Applied)", 
+            font=("Segoe UI", 14, "bold")
+        )
+        title.pack(pady=(10, 0), padx=20, anchor="w")
 
-        info_label = ttk.Label(self.frame, text="Parent = Document Header | Children = Generated Journal Lines", 
-                               foreground="gray")
+        # 2. Info Label (using pack)
+        info_label = ttk.Label(
+            self.frame, 
+            text="Parent = Document Header | Children = Generated Journal Lines", 
+            foreground="gray"
+        )
         info_label.pack(padx=20, anchor="w")
+
+        # 3. Container for Treeview and Scrollbar 
+        # This frame will expand to fill all remaining vertical space
+        tree_container = ttk.Frame(self.frame)
+        tree_container.pack(fill="both", expand=True, padx=20, pady=10)
 
         # Hierarchical Treeview for Formulas
         columns = ("type", "account", "description", "debit", "credit")
-        self.tree = ttk.Treeview(self.frame, columns=columns, show="tree headings", height=20)
+        self.tree = ttk.Treeview(tree_container, columns=columns, show="tree headings", height=20)
         
         # Define Headings
         self.tree.heading("#0", text="Document / Step")
@@ -37,15 +50,13 @@ class TableTab:
         self.tree.column("debit", width=100, anchor="e")
         self.tree.column("credit", width=100, anchor="e")
 
-        # Scrollbars
-        vsb = ttk.Scrollbar(self.frame, orient="vertical", command=self.tree.yview)
+        # Scrollbar
+        vsb = ttk.Scrollbar(tree_container, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
 
-        self.tree.grid(row=2, column=0, sticky="nsew", padx=(20, 0), pady=10)
-        vsb.grid(row=2, column=1, sticky="ns", pady=10)
-        
-        self.frame.grid_rowconfigure(2, weight=1)
-        self.frame.grid_columnconfigure(0, weight=1)
+        # Pack tree and scrollbar inside the container (still using pack, no grid!)
+        self.tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
 
     def refresh_table(self):
         """Clears and repopulates the tree with hierarchical formulas"""
@@ -79,4 +90,3 @@ class TableTab:
                     d_val,
                     c_val
                 ))
-                

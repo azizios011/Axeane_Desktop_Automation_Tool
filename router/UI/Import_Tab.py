@@ -4,6 +4,8 @@ from tkinter import ttk, filedialog, messagebox
 import threading
 import json
 import os
+from Function.csv_parser import parse_vente_csv, strip_keys
+from Debug.Logger import ColorLogger as log
 
 class ImportTab:
     def __init__(self, parent, shared_state, callback_on_parse):
@@ -11,14 +13,6 @@ class ImportTab:
         self.state = shared_state
         self.callback = callback_on_parse
         self._build_ui()
-
-    def _strip_keys(self, d):
-        """Helper to remove trailing spaces from JSON keys (e.g., 'match ' -> 'match')"""
-        if isinstance(d, dict):
-            return {k.strip(): self._strip_keys(v) for k, v in d.items()}
-        elif isinstance(d, list):
-            return [self._strip_keys(i) for i in d]
-        return d
 
     def _build_ui(self):
         title = ttk.Label(self.frame, text="1. Import & Map Raw Data", font=("Segoe UI", 14, "bold"))
@@ -71,9 +65,9 @@ class ImportTab:
         if os.path.exists(json_path):
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
-                    structure = self._strip_keys(json.load(f))
+                    structure = strip_keys(json.load(f))
                 
-                # Get column names from the mapping keys
+                # Get column names from the mapping keys (these are the CSV headers)
                 col_mapping = structure.get("column_mapping", {})
                 columns = list(col_mapping.keys())
                 
@@ -82,8 +76,9 @@ class ImportTab:
                     for col in columns:
                         self.raw_tree.heading(col, text=col)
                         self.raw_tree.column(col, width=120, anchor="w")
+                    log.debug(f"Treeview columns updated for {doc_type}: {columns}")
             except Exception as e:
-                print(f"Error loading structure: {e}")
+                log.error(f"Error loading structure {json_path}: {e}")
 
     def _browse_file(self):
         path = filedialog.askopenfilename(filetypes=[("CSV/Excel", "*.csv *.xlsx")])
@@ -97,32 +92,34 @@ class ImportTab:
             return
 
         self.status_label.config(text="Status: Processing in background...", foreground="blue")
+        log.info(f"Starting parse for file: {path}")
         threading.Thread(target=self._parse_logic, args=(path,), daemon=True).start()
 
     def _parse_logic(self, path):
         try:
-            # MOCK RAW DATA FOR DEMONSTRATION
-            # In reality, you would read the CSV here using pandas or csv module
             doc_type = self.doc_type.get()
+            log.info(f"Document type selected: {doc_type}")
             
             if doc_type == "Vente":
-                mock_raw = [
-                    {"Reference": "FC000761", "Date": "15/06/2026", "Client": "TUNISIE AUTOMOTIVE", "Operation": "Vente", "Tot. Net. HT": 252.850, "TVA %": 19, "Montant TVA": 48.230, "TTC": 302.080},
-                    {"Reference": "FC000762", "Date": "16/06/2026", "Client": "STE OTO MOOVE", "Operation": "Vente", "Tot. Net. HT": 100.000, "TVA %": 19, "Montant TVA": 19.000, "TTC": 120.000}
-                ]
+                parsed_data = parse_vente_csv(path)
             else:
-                mock_raw = [
-                    {"Date": "15/06/2026", "Label": "ACHAT SONEDE", "Amount": -150.000}
-                ]
+                # TODO: Implement parse_bank_csv
+                log.warn("Bank parsing not yet implemented.")
+                parsed_data = []
+
+            if not parsed_data:
+                self.frame.after(0, lambda: self.status_label.config(text="Status: No data parsed. Check logs.", foreground="red"))
+                return
 
             # Update Raw Table UI safely
-            self.frame.after(0, self._populate_raw_table, mock_raw)
+            self.frame.after(0, self._populate_raw_table, parsed_data)
             
-            # Here you would call your Logic/Rules.py to generate parsed_entries
-            # self.state["parsed_entries"] = ...
-            self.frame.after(0, self._on_parse_success, len(mock_raw))
+            # Store raw data in shared state
+            self.state["raw_data"] = parsed_data
+            self.frame.after(0, self._on_parse_success, len(parsed_data))
             
         except Exception as e:
+            log.error(f"Fatal error in _parse_logic: {e}")
             self.frame.after(0, lambda: self.status_label.config(text=f"Error: {str(e)}", foreground="red"))
 
     def _populate_raw_table(self, raw_data):
@@ -130,12 +127,23 @@ class ImportTab:
         for item in self.raw_tree.get_children():
             self.raw_tree.delete(item)
             
+        # Get current columns from treeview
+        columns = self.raw_tree["columns"]
+        
         for row in raw_data:
             # Map row values to the current columns
-            values = [row.get(col, "") for col in self.raw_tree["columns"]]
+            values = []
+            for col in columns:
+                val = row.get(col, "")
+                # Format floats nicely for display
+                if isinstance(val, float):
+                    val = f"{val:,.3f}"
+                values.append(val)
             self.raw_tree.insert("", "end", values=values)
+            
+        log.success(f"Populated raw table with {len(raw_data)} rows.")
 
     def _on_parse_success(self, count):
         self.status_label.config(text=f"Status: Success! Loaded {count} raw rows.", foreground="green")
         self.callback() # Triggers Table_Tab refresh
-        
+    
