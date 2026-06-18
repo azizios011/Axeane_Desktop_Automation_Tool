@@ -18,11 +18,11 @@ class ReviewAndRulesTab:
 
     def _build_ui(self):
         # Title
-        title = ttk.Label(self.frame, text="Formula Preview & Rules", 
+        title = ttk.Label(self.frame, text="Formula Preview & Rules",
                          font=("Segoe UI", 14, "bold"))
         title.pack(pady=10, padx=20, anchor="w")
 
-        info_label = ttk.Label(self.frame, 
+        info_label = ttk.Label(self.frame,
                               text="Click 'Generate Formulas' to see exactly how each invoice will be entered row-by-row",
                               foreground="gray")
         info_label.pack(padx=20, anchor="w")
@@ -31,11 +31,11 @@ class ReviewAndRulesTab:
         ctrl_frame = ttk.Frame(self.frame)
         ctrl_frame.pack(fill="x", padx=20, pady=10)
 
-        self.btn_generate = ttk.Button(ctrl_frame, text="🔧 Generate Formulas", 
+        self.btn_generate = ttk.Button(ctrl_frame, text="🔧 Generate Formulas",
                                        command=self._generate_formulas)
         self.btn_generate.pack(side="left", padx=5)
 
-        self.btn_clear = ttk.Button(ctrl_frame, text="🗑️ Clear", 
+        self.btn_clear = ttk.Button(ctrl_frame, text="🗑️ Clear",
                                    command=self._clear_formulas)
         self.btn_clear.pack(side="left", padx=5)
 
@@ -43,12 +43,12 @@ class ReviewAndRulesTab:
         self.summary_frame = ttk.LabelFrame(self.frame, text="Summary", padding=10)
         self.summary_frame.pack(fill="x", padx=20, pady=10)
 
-        self.summary_label = ttk.Label(self.summary_frame, 
+        self.summary_label = ttk.Label(self.summary_frame,
                                       text="No formulas generated yet",
                                       font=("Segoe UI", 10))
         self.summary_label.pack(anchor="w")
 
-        # Formula Display (Treeview) with better error handling
+        # Formula Display (Treeview)
         display_frame = ttk.LabelFrame(self.frame, text="Formula Details", padding=10)
         display_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -66,7 +66,7 @@ class ReviewAndRulesTab:
         self.tree.heading("step", text="Step")
 
         # Define Column Widths
-        self.tree.column("#0", width=200)
+        self.tree.column("#0", width=250)
         self.tree.column("ref", width=100)
         self.tree.column("row_num", width=60, anchor="center")
         self.tree.column("account", width=100)
@@ -88,7 +88,6 @@ class ReviewAndRulesTab:
         display_frame.grid_columnconfigure(0, weight=1)
 
     def _generate_formulas(self):
-        """Generate formulas from parsed invoices with proper error handling"""
         raw_data = self.state.get("raw_data", [])
 
         if not raw_data:
@@ -98,11 +97,8 @@ class ReviewAndRulesTab:
         log.info(f"Generating formulas for {len(raw_data)} invoices...")
 
         try:
-            # Disable button during processing
             self.btn_generate.config(state="disabled")
             self.summary_label.config(text="Generating formulas...")
-            
-            # Force UI update
             self.frame.update_idletasks()
 
             # Generate formulas
@@ -112,17 +108,21 @@ class ReviewAndRulesTab:
             self.state["formula_cards"] = cards
 
             # Update summary
-            summary = self.engine.get_summary()
+            total_cards = len(cards)
+            total_rows = sum(c["row_count"] for c in cards)
+            balanced = sum(1 for c in cards if c["is_balanced"])
+            unbalanced = total_cards - balanced
+
             summary_text = (
-                f"✅ Generated {summary['total_cards']} formulas\n"
-                f"📊 Total rows to enter: {summary['total_rows']}\n"
-                f"✓ Balanced invoices: {summary['balanced_cards']}\n"
-                f"✗ Unbalanced invoices: {summary['unbalanced_cards']}"
+                f"✅ Generated {total_cards} formulas\n"
+                f"📊 Total rows to enter: {total_rows}\n"
+                f"✓ Balanced invoices: {balanced}\n"
+                f"✗ Unbalanced invoices: {unbalanced}"
             )
             self.summary_label.config(text=summary_text)
 
-            # Display formulas in treeview with error handling
-            self._display_formulas_safe(cards)
+            # Display formulas in treeview
+            self._display_formulas(cards)
 
             log.success("Formula generation complete")
 
@@ -131,83 +131,71 @@ class ReviewAndRulesTab:
             messagebox.showerror("Error", f"Failed to generate formulas:\n{str(e)}")
             self.summary_label.config(text="Error generating formulas")
         finally:
-            # Re-enable button
             self.btn_generate.config(state="normal")
 
-    def _display_formulas_safe(self, cards):
-        """Safely display formulas with error handling and batching"""
-        try:
-            # Clear existing items
-            for item in self.tree.get_children():
-                self.tree.delete(item)
+    def _display_formulas(self, cards):
+        """Display all formula cards in the treeview"""
+        # Clear existing items
+        for item in self.tree.get_children():
+            self.tree.delete(item)
 
-            # Process cards in batches to avoid UI freezing
-            batch_size = 50
-            total_cards = len(cards)
-            
-            for i in range(0, total_cards, batch_size):
-                batch = cards[i:i + batch_size]
-                self._add_batch_to_tree(batch)
-                
-                # Update UI periodically
-                if i % 100 == 0:
-                    self.frame.update_idletasks()
+        for card in cards:
+            # Safely get values with fallbacks
+            ref = card.get("ref", "UNKNOWN")
+            sample_client = card.get("sample_client", "Unknown Client")
+            match_key = card.get("match_key", "N/A")
+            is_balanced = card.get("is_balanced", False)
+            total_debit = card.get("total_debit", 0)
+            total_credit = card.get("total_credit", 0)
+            row_count = card.get("row_count", 0)
+            formula_lines = card.get("formula_lines", [])
 
-            log.info(f"Successfully displayed {total_cards} formula cards in treeview")
+            # Parent row (Invoice header)
+            balance_status = "✓" if is_balanced else "✗"
+            parent_text = f"{ref} | {sample_client[:40]} | Profile: {match_key}"
 
-        except Exception as e:
-            log.error(f"Error displaying formulas in treeview: {e}")
-            # Try to show at least some data
-            try:
-                self.tree.insert("", "end", text=f"Error displaying formulas: {str(e)}", 
-                               values=("ERROR", "", "", "", "", "", ""))
-            except:
-                pass
+            parent_id = self.tree.insert(
+                "", "end",
+                text=f"{parent_text} [{balance_status}]",
+                values=(
+                    ref,
+                    "",
+                    "",
+                    "",
+                    f"{total_debit:.3f}",
+                    f"{total_credit:.3f}",
+                    f"{row_count} rows"
+                ),
+                open=False
+            )
 
-    def _add_batch_to_tree(self, cards_batch):
-        """Add a batch of cards to the treeview"""
-        for card in cards_batch:
-            try:
-                # Parent row (Invoice header)
-                parent_text = f"{card['ref']} | {card['sample_client'][:50]} | Profile: {card['match_key']}"
-                balance_status = "✓" if card["is_balanced"] else "✗"
+            # Child rows (Journal entries)
+            for i, line in enumerate(formula_lines):
+                # Safely get row_num (generate if missing)
+                row_num = line.get("row_num", i + 1)
+                account = line.get("account", "")
+                label = line.get("label", "")
+                debit = line.get("debit", 0)
+                credit = line.get("credit", 0)
+                step = line.get("step", "")
 
-                parent_id = self.tree.insert(
-                    "", "end", 
-                    text=f"{parent_text} [{balance_status}]",
+                self.tree.insert(
+                    parent_id, "end",
+                    text="",
                     values=(
-                        card["ref"],
                         "",
-                        "",
-                        "",
-                        f"{card['total_debit']:.3f}",
-                        f"{card['total_credit']:.3f}",
-                        f"{card['row_count']} rows"
-                    ),
-                    open=False
+                        row_num,
+                        account,
+                        label,
+                        f"{debit:.3f}" if debit > 0 else "",
+                        f"{credit:.3f}" if credit > 0 else "",
+                        step
+                    )
                 )
 
-                # Child rows (Journal entries)
-                for row in card["formula_lines"]:
-                    self.tree.insert(
-                        parent_id, "end",
-                        text="",
-                        values=(
-                            "",
-                            row["row_num"],
-                            row["account"],
-                            row["label"],
-                            f"{row['debit']:.3f}" if row["debit"] > 0 else "",
-                            f"{row['credit']:.3f}" if row["credit"] > 0 else "",
-                            row["step"]
-                        )
-                    )
-            except Exception as e:
-                log.warn(f"Error adding card {card.get('ref', 'UNKNOWN')} to treeview: {e}")
-                continue
+        log.info(f"Successfully displayed {len(cards)} formula cards in treeview")
 
     def _clear_formulas(self):
-        """Clear all formulas"""
         try:
             for item in self.tree.get_children():
                 self.tree.delete(item)
