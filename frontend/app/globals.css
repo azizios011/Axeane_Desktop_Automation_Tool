@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;450;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* --- Custom Design Tokens (Material 3 Style) --- */
+  --color-primary: #004ac6;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #2563eb;
+  --color-on-primary-container: #eeefff;
+  --color-primary-fixed: #dbe1ff;
+  --color-primary-fixed-dim: #b4c5ff;
+  --color-on-primary-fixed: #00174b;
+  --color-on-primary-fixed-variant: #003ea8;
+
+  --color-secondary: #565e74;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #dae2fd;
+  --color-on-secondary-container: #5c647a;
+  --color-secondary-fixed: #dae2fd;
+  --color-secondary-fixed-dim: #bec6e0;
+  --color-on-secondary-fixed: #131b2e;
+  --color-on-secondary-fixed-variant: #3f465c;
+
+  --color-tertiary: #46566c;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #5e6e85;
+  --color-on-tertiary-container: #e9f0ff;
+  --color-tertiary-fixed: #d3e4fe;
+  --color-tertiary-fixed-dim: #b7c8e1;
+  --color-on-tertiary-fixed: #0b1c30;
+  --color-on-tertiary-fixed-variant: #38485d;
+
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  --color-surface: #faf8ff;
+  --color-on-surface: #191b23;
+  --color-on-surface-variant: #434655;
+  --color-surface-dim: #d9d9e5;
+  --color-surface-bright: #faf8ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f3f3fe;
+  --color-surface-container: #ededf9;
+  --color-surface-container-high: #e7e7f3;
+  --color-surface-container-highest: #e1e2ed;
+  --color-surface-variant: #e1e2ed;
+  --color-surface-tint: #0053db;
+
+  --color-outline: #737686;
+  --color-outline-variant: #c3c6d7;
+  --color-background: #faf8ff;
+  --color-on-background: #191b23;
+  
+  --color-inverse-surface: #2e3039;
+  --color-inverse-on-surface: #f0f0fb;
+  --color-inverse-primary: #b4c5ff;
+
+  /* --- Spaging & Layout --- */
+  --spacing-gutter: 16px;
+  --spacing-sidebar-width: 240px;
+  --spacing-margin-page: 24px;
+  --spacing-stack-xs: 4px;
+  --spacing-stack-sm: 8px;
+  --spacing-stack-md: 16px;
+
+  /* --- Typography --- */
+  --font-sans: "Inter", ui-sans-serif, system-ui;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular;
+}
+
+/* --- Base Layer Customizations --- */
+@layer base {
+  *, ::after, ::before {
+    @apply border-outline-variant;
+  }
+  
+  body {
+    @apply bg-background text-on-surface antialiased font-sans;
+  }
+
+  /* Custom Scrollbar for dense accounting tables */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-outline-variant);
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-outline);
+  }
+}
+
+/* --- Utility Layer --- */
+@layer utilities {
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background;
+  }
+
+  /* Text Styles from your original file */
+  .text-h1 { font-size: 24px; line-height: 32px; letter-spacing: -0.01em; font-weight: 600; }
+  .text-h2 { font-size: 20px; line-height: 28px; font-weight: 600; }
+  .text-h3 { font-size: 18px; line-height: 28px; font-weight: 600; }
+  .text-label-caps { font-size: 11px; line-height: 12px; letter-spacing: 0.05em; font-weight: 700; text-transform: uppercase; }
+  .text-body-md { font-size: 14px; line-height: 20px; font-weight: 400; }
+  .text-body-sm { font-size: 13px; line-height: 18px; font-weight: 400; }
+  .text-data-mono { font-size: 13px; line-height: 16px; font-weight: 450; font-family: var(--font-mono); }
+}
