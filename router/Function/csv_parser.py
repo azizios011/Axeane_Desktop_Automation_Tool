@@ -5,22 +5,25 @@ import os
 from Debug.Logger import ColorLogger as log
 
 def strip_keys(d):
-    """Recursively strip whitespace from dictionary keys to fix JSON formatting issues."""
+    """Recursively strip whitespace from dictionary keys."""
     if isinstance(d, dict):
         return {k.strip(): strip_keys(v) for k, v in d.items()}
     elif isinstance(d, list):
         return [strip_keys(i) for i in d]
     return d
 
-def parse_vente_csv(file_path: str) -> list:
-    """Reads the Vente CSV and maps columns to the JSON structure."""
+def parse_vente_csv(file_path: str) -> tuple:
+    """
+    Reads the Vente CSV and maps columns to the JSON structure.
+    Returns: (parsed_data_list, csv_headers_list)
+    """
     log.info(f"Starting CSV parse for: {file_path}")
     
     # Load structure
     struct_path = "DB/Vente_Structure.json"
     if not os.path.exists(struct_path):
         log.error(f"Structure file not found: {struct_path}")
-        return []
+        return [], []  # Return empty tuple
         
     with open(struct_path, 'r', encoding='utf-8') as f:
         structure = strip_keys(json.load(f))
@@ -33,9 +36,8 @@ def parse_vente_csv(file_path: str) -> list:
     csv_headers = []
     
     try:
-        # FIX: Use 'utf-8-sig' encoding to automatically strip BOM character
         with open(file_path, mode='r', encoding='utf-8-sig') as f:
-            # Sniff delimiter just in case, but default to comma
+            # Sniff delimiter
             sample = f.read(2048)
             f.seek(0)
             try:
@@ -46,17 +48,17 @@ def parse_vente_csv(file_path: str) -> list:
             reader = csv.DictReader(f, dialect=dialect)
             csv_headers = reader.fieldnames
             
-            # FIX: Strip BOM and whitespace from headers
+            # Strip BOM and whitespace from headers
             csv_headers = [h.strip().lstrip('\ufeff') for h in csv_headers]
             
             log.info(f"CSV Headers found (in order): {csv_headers}")
             
-            for row_num, row in enumerate(reader, start=2): # start=2 because row 1 is header
+            for row_num, row in enumerate(reader, start=2):
                 try:
-                    # Strip BOM from all keys in the row
+                    # Strip BOM from all keys
                     row = {k.strip().lstrip('\ufeff'): v for k, v in row.items()}
                     
-                    # Skip Grand Total row (check if Reference column is empty or contains "Grand Total")
+                    # Skip Grand Total row
                     ref_val = row.get("Reference", "").strip()
                     if not ref_val or ref_val.lower() == "grand total":
                         log.debug(f"Row {row_num}: Skipping summary/empty row")
@@ -72,13 +74,10 @@ def parse_vente_csv(file_path: str) -> list:
                         internal_key = col_map.get(csv_col_stripped, csv_col_stripped)
                         
                         if internal_key in ["net_ht", "tva_amt", "ttc", "ht_brut", "remise", "net_ht_raw", "fodec"]:
-                            # Handle thousand separators (commas) and decimal points
                             val = float(val.replace(",", "").replace(" ", "")) if val else 0.0
                         elif internal_key == "tva_rate":
-                            # Handle "19.00 %" -> 19.00
                             val = float(val.replace("%", "").replace(",", ".").strip()) if val else 0.0
                             
-                        # Store with CSV column name as key (to preserve order in table)
                         parsed_row[csv_col_stripped] = val
                         
                     data.append(parsed_row)
@@ -88,8 +87,8 @@ def parse_vente_csv(file_path: str) -> list:
                     
     except Exception as e:
         log.error(f"Failed to open/read CSV file: {e}")
-        return []
+        return [], []  # Return empty tuple
         
     log.success(f"CSV parsing complete. {len(data)} rows loaded, {errors} errors.")
-    return data
+    return data, csv_headers  # Return both data AND headers
     
