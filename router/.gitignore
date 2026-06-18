@@ -1,0 +1,72 @@
+# ==========================
+# Python Bytecode & Cache
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================
+# Virtual Environments
+# ==========================
+venv/
+env/
+ENV/
+.venv
+
+# ==========================
+# Build & Distribution (PyInstaller)
+# ==========================
+build/
+dist/
+*.spec
+*.egg-info/
+
+# ==========================
+# IDE & Editor Files
+# ==========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ==========================
+# OS Generated Files
+# ==========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ==========================
+# Axeane Project Specific
+# ==========================
+# Debug logs (contains network traces and DOM snapshots)
+Debug/logs/
+
+# Browser profiles (contains session cookies/login states, should stay local)
+axeane_browser_profile/
+browser_data/
+
+# Environment variables (if you store credentials here)
+.env
+.env.local
+
+# Temporary & Backup files
+*.tmp
+*.bak
+*.log
+
+# Local test data (if you drop CSVs here)
+data/
