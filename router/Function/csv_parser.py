@@ -5,7 +5,7 @@ import os
 from Debug.Logger import ColorLogger as log
 
 def strip_keys(d):
-    """Recursively strip whitespace from dictionary keys to fix JSON formatting issues."""
+    """Recursively strip whitespace from dictionary keys."""
     if isinstance(d, dict):
         return {k.strip(): strip_keys(v) for k, v in d.items()}
     elif isinstance(d, list):
@@ -13,31 +13,59 @@ def strip_keys(d):
     return d
 
 def parse_number(value):
-    """Parse numeric values handling French format (comma as thousand separator, dot as decimal)."""
-    if not value or value.strip() == '':
+    """Parse numeric values handling French format, quotes, and edge cases."""
+    if value is None:
         return 0.0
     
+    # If already a number, return it
+    if isinstance(value, (int, float)):
+        return float(value)
+    
+    # Convert to string and clean
+    value = str(value).strip()
+    
+    if not value or value == '':
+        return 0.0
+    
+    # Remove quotes (CSV sometimes includes them)
+    value = value.strip('"\'')
+    
     # Remove thousand separators (commas) and spaces
-    value = value.replace(',', '').replace(' ', '')
+    value = value.replace(',', '').replace(' ', '').replace('\u00a0', '')
     
     try:
-        return float(value)
-    except ValueError:
-        log.warn(f"Could not parse number: {value}")
+        result = float(value)
+        return result
+    except ValueError as e:
+        log.warn(f"Could not parse number: '{value}' - {e}")
         return 0.0
 
 def parse_percentage(value):
     """Parse percentage values like '19.00 %' -> 19.0"""
-    if not value or value.strip() == '':
+    if value is None:
         return 0.0
     
-    # Remove percentage sign and spaces
-    value = value.replace('%', '').replace(',', '.').strip()
+    # If already a number, return it
+    if isinstance(value, (int, float)):
+        return float(value)
+    
+    # Convert to string and clean
+    value = str(value).strip()
+    
+    if not value or value == '':
+        return 0.0
+    
+    # Remove quotes
+    value = value.strip('"\'')
+    
+    # Remove percentage sign, spaces, and convert comma to dot
+    value = value.replace('%', '').replace(' ', '').replace(',', '.')
     
     try:
-        return float(value)
-    except ValueError:
-        log.warn(f"Could not parse percentage: {value}")
+        result = float(value)
+        return result
+    except ValueError as e:
+        log.warn(f"Could not parse percentage: '{value}' - {e}")
         return 0.0
 
 def parse_vente_csv(file_path: str) -> tuple:
@@ -61,8 +89,9 @@ def parse_vente_csv(file_path: str) -> tuple:
     csv_headers = []
     
     try:
+        # Use utf-8-sig to handle BOM
         with open(file_path, mode='r', encoding='utf-8-sig') as f:
-            # Sniff delimiter
+            # Detect delimiter
             sample = f.read(2048)
             f.seek(0)
             try:
@@ -89,27 +118,32 @@ def parse_vente_csv(file_path: str) -> tuple:
                         log.debug(f"Row {row_num}: Skipping summary/empty row")
                         continue
                     
-                    # Store ALL columns from CSV in their original order
+                    # Parse all columns
                     parsed_row = {}
                     for csv_col in csv_headers:
                         csv_col_stripped = csv_col.strip()
-                        val = row.get(csv_col_stripped, "").strip() if row.get(csv_col_stripped) else ""
+                        val = row.get(csv_col_stripped, "")
                         
                         # Get internal key for type conversion
                         internal_key = col_map.get(csv_col_stripped, csv_col_stripped)
                         
                         # Type conversion based on field type
                         if internal_key in ["net_ht", "tva_amt", "ttc", "ht_brut", "remise", "net_ht_raw", "fodec"]:
-                            # Parse numeric fields
-                            parsed_row[csv_col_stripped] = parse_number(val)
+                            parsed_val = parse_number(val)
+                            parsed_row[csv_col_stripped] = parsed_val
                         elif internal_key == "tva_rate":
-                            # Parse percentage fields
-                            parsed_row[csv_col_stripped] = parse_percentage(val)
+                            parsed_val = parse_percentage(val)
+                            parsed_row[csv_col_stripped] = parsed_val
                         else:
-                            # Keep as string
-                            parsed_row[csv_col_stripped] = val
+                            # Keep as string, strip if it's a string
+                            parsed_row[csv_col_stripped] = val.strip() if isinstance(val, str) else val
                             
                     data.append(parsed_row)
+                    
+                    # Log first few rows for debugging
+                    if row_num <= 4:
+                        log.debug(f"Row {row_num} parsed: Client={parsed_row.get('Client', '')}, TTC={parsed_row.get('TTC', 0)}, TVA%={parsed_row.get('TVA %', 0)}")
+                    
                 except Exception as e:
                     errors += 1
                     log.error(f"Row {row_num} parsing error: {e} | Data: {row}")
@@ -119,5 +153,10 @@ def parse_vente_csv(file_path: str) -> tuple:
         return [], []
         
     log.success(f"CSV parsing complete. {len(data)} rows loaded, {errors} errors.")
-    return data, csv_headers
     
+    # Log sample data for verification
+    if data:
+        sample = data[0]
+        log.info(f"Sample row: Client={sample.get('Client', '')}, TTC={sample.get('TTC', 0)}, TVA%={sample.get('TVA %', 0)}")
+    
+    return data, csv_headers
