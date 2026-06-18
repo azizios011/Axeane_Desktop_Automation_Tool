@@ -81,25 +81,35 @@ class ExecutionTab:
                 cdp = CDPManager(cdp_settings)
                 browser, page = await cdp.get_browser_and_page()
                 try:
-                    # Navigate to the writing screen if not already there
+                    # Navigate to the Saisie des écritures screen
                     if "ecritureComponentModele" not in page.url:
                         self._append_log("Navigating to Saisie des écritures...", "INFO")
                         await page.goto("https://kompta.axeane.com/views/comptageneral/traitement/ecritures/ecranEcritureMainModele2.html")
                         await page.wait_for_timeout(3000)
 
-                    # Create orchestrator
+                    # Initialize the orchestrator
                     orchestrator = AxeaneOrchestrator(page, self.state)
+        
+                    # Get the data from shared state
+                    raw_data = self.state.get("raw_data", [])
+                    cards = self.state.get("formula_cards", [])
+        
+                    if not raw_data or not cards:
+                        self._append_log("No data or formulas found. Please parse CSV and generate formulas first.", "ERROR")
+                        return
 
-                    # Progress callback
+                    # Progress callback to update the UI
                     def on_progress(current, total, success, failed):
                         pct = (current / total) * 100
                         self.root.after(0, self._update_progress, pct)
                         self._append_log(f"[{current}/{total}] {success}✓ {failed}✗", "INFO")
 
-                    # Run!
-                    success, failed = await orchestrator.run_all(cards, on_progress)
+                    # Run the automation!
+                    success, failed = await orchestrator.run_all(raw_data, cards, on_progress)
                     self._append_log(f"🏁 Complete: {success} succeeded, {failed} failed", "SUCCESS")
 
+                except Exception as e:
+                    self._append_log(f"❌ Fatal: {e}", "ERROR")
                 finally:
                     await cdp.cleanup(browser)
 

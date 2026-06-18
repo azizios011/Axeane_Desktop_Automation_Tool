@@ -1,23 +1,20 @@
 # Modules/AxeaneOrchestrator.py
 import asyncio
-from datetime import datetime
 from Models.EcritureHeader import EcritureHeader
 from Models.EcritureTable import EcritureTable
 from Models.EcritureActions import EcritureActions
 from Debug.Logger import ColorLogger as log
 
-
-# Month name mapping (French)
-MONTHS_FR = {
-    1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
-    5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août",
-    9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
-}
-
+MONTHS_FR = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+]
 
 class AxeaneOrchestrator:
-    """Orchestrates the filling of all formula cards into Axeane."""
-
+    """
+    Orchestrates the filling of individual invoices into Axeane.
+    It uses the Formula Cards as templates for the accounting lines.
+    """
     def __init__(self, page, shared_state):
         self.page = page
         self.state = shared_state
@@ -29,77 +26,109 @@ class AxeaneOrchestrator:
     def stop(self):
         self._stop_flag = True
 
-    def _parse_date(self, date_str: str):
-        """Parse dd/mm/yyyy date string."""
+    def _get_mois_text(self, date_str):
+        """Converts '02/03/2026' to 'Mars 2026'."""
         try:
-            return datetime.strptime(date_str.strip(), "%d/%m/%Y")
-        except Exception:
-            return datetime.now()
+            parts = date_str.strip().split("/")
+            day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+            return f"{MONTHS_FR[month - 1]} {year}"
+        except:
+            return "Mars 2026" # Fallback
 
-    def _mois_text(self, date_obj: datetime) -> str:
-        """Convert date to Axeane month dropdown text (e.g., 'Mars 2026')."""
-        return f"{MONTHS_FR[date_obj.month]} {date_obj.year}"
+    def _find_card_for_row(self, row, cards):
+        """Finds which formula card (template) applies to this specific row."""
+        from Logic.accounts import AccountManager
+        am = AccountManager()
+        client_name = row.get("client_name", "")
+        info = am.get_profile(client_name)
+        match_key = info["match_key"]
+        
+        # Find the card with the matching match_key
+        for card in cards:
+            if card["match_key"] == match_key:
+                return card
+        
+        # Fallback to DEFAULT card
+        for card in cards:
+            if card["match_type"] == "default":
+                return card
+        return None
 
-    async def fill_one_invoice(self, card: dict, progress_callback=None):
-        """Fill one invoice (one formula card) into Axeane."""
-        ref = card["ref"]
-        date_str = card["date"]
-        client_name = card["client_name"]
-        formula_lines = card["formula_lines"]
-        match_key = card["match_key"]
+    def _generate_lines_for_row(self, row, card):
+        """Generates the specific accounting lines for a single row using the card's profile."""
+        from Logic.rules import RulesEngine
+        rules = RulesEngine()
+        # This recalculates the exact debits/credits for this specific row's amounts
+        return rules.generate_formula(row, card["profile"])
 
-        date_obj = self._parse_date(date_str)
-        mois_text = self._mois_text(date_obj)
+    async def fill_one_invoice(self, row, card):
+        """Fills the Axeane form for a single invoice row."""
+        ref = row.get("ref", "UNKNOWN")
+        date_str = row.get("date", "")
+        client_name = row.get("client_name", "")
+        
+        # 1. Generate specific lines for this row
+        lines = self._generate_lines_for_row(row, card)
+        
+        # 2. Determine journal (CA for cash clients, VT for others)
+        journal = "CA" if card["profile"].get("use_cash") else "VT"
+        mois_text = self._get_mois_text(date_str)
+        
+        # Clean ref (e.g., "FC000761/2026" -> "FC000761")
+        clean_ref = ref.split("/")[0] if "/" in ref else ref
+        
+        log.info(f"Filling {clean_ref} | {client_name[:30]} | {len(lines)} lines | Journal: {journal}")
 
-        # Determine journal: if client uses cash, use CA; otherwise VT
-        journal = "CA" if card.get("profile", {}).get("use_cash") else "VT"
-
-        log.info(f"Filling {ref} | {client_name[:30]} | {len(formula_lines)} rows | Journal: {journal}")
-
-        # 1. Fill header
+        # 3. Fill header
         await self.header.fill_all(
             date_str=date_str,
             journal=journal,
             mois=mois_text,
-            ref=ref.split("/")[0] if "/" in ref else ref,  # FC000761 from FC000761/2026
+            ref=clean_ref,
             libelle=client_name[:120].upper(),
         )
 
-        # 2. Fill table rows
-        await self.table.fill_formula(formula_lines)
+        # 4. Fill table rows
+        await self.table.fill_formula(lines)
 
-        # 3. Balance (optional — Axeane auto-balances, but this ensures it)
-        # await self.actions.balance()
-
-        # 4. Save
+        # 5. Save
         await self.actions.save()
 
-        # 5. Wait for form to reset
+        # 6. Wait for form to reset for the next entry
         await self.actions.wait_for_form_ready()
 
-        log.success(f"✅ {ref} saved successfully")
+        log.success(f"✅ {clean_ref} saved successfully")
 
-    async def run_all(self, cards: list, progress_callback=None):
-        """Run through all formula cards."""
+    async def run_all(self, raw_data, cards, progress_callback=None):
+        """Runs through all raw data rows, using the cards as templates."""
         self._stop_flag = False
-        total = len(cards)
+        total = len(raw_data)
         success = 0
         failed = 0
 
         log.info(f"🚀 Starting automation for {total} invoices...")
 
-        for i, card in enumerate(cards):
+        for i, row in enumerate(raw_data):
             if self._stop_flag:
                 log.warn("⛔ Stopped by user")
                 break
 
+            # Find the template (card) for this specific row
+            card = self._find_card_for_row(row, cards)
+            if not card:
+                log.error(f"No formula card found for {row.get('client_name')}")
+                failed += 1
+                continue
+
             try:
-                await self.fill_one_invoice(card, progress_callback)
+                await self.fill_one_invoice(row, card)
                 success += 1
             except Exception as e:
                 failed += 1
-                log.error(f"❌ Failed {card.get('ref', '?')}: {e}")
-                # Try to recover by deleting and waiting
+                # Now it will correctly print the actual ref instead of '?'
+                log.error(f"❌ Failed {row.get('ref', '?')}: {e}")
+                
+                # Try to recover by clearing the form
                 try:
                     await self.actions.delete_all()
                     await self.actions.wait_for_form_ready()
@@ -109,7 +138,7 @@ class AxeaneOrchestrator:
             if progress_callback:
                 progress_callback(i + 1, total, success, failed)
 
-            # Small delay between invoices to avoid overwhelming Axeane
+            # Small delay to avoid overwhelming the browser/AngularJS
             await asyncio.sleep(0.5)
 
         log.success(f"🏁 Done! {success} succeeded, {failed} failed out of {total}")
