@@ -1,15 +1,11 @@
 # Modules/CDP_Setting.py
 import os
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import async_playwright, Browser, Page
 
 class CDPManager:
-    """
-    Manages Chrome DevTools Protocol (CDP) and PWA browser launch configurations.
-    Allows connecting to an existing logged-in browser or using a persistent profile.
-    """
-    MODE_NORMAL = "Normal Launch"
+    MODE_NORMAL = "Standard Launch (Fresh session)"
     MODE_PERSISTENT = "Persistent Profile (Keep Login)"
-    MODE_CDP_CONNECT = "Connect to Existing CDP"
+    MODE_CDP_CONNECT = "Connect to Existing CDP (Attach to logged-in browser)"
     MODE_PWA = "PWA Mode (Standalone App)"
 
     def __init__(self, settings: dict):
@@ -18,78 +14,77 @@ class CDPManager:
         self.profile_dir = settings.get("profile_dir", "./axeane_browser_profile")
         self.pwa_url = settings.get("pwa_url", "https://kompta.axeane.com")
         self.headless = settings.get("headless", False)
+        
+        # New Browser Settings
+        self.browser_type = settings.get("browser_type", "Chrome")
+        self.executable_path = settings.get("executable_path", "")
+
+    def _get_launch_kwargs(self):
+        """Builds the arguments for playwright.chromium.launch() based on UI settings"""
+        kwargs = {"headless": self.headless}
+        
+        # If user selected a specific browser type, use the 'channel' argument
+        if self.browser_type == "Edge":
+            kwargs["channel"] = "msedge"
+        elif self.browser_type == "Chrome":
+            kwargs["channel"] = "chrome"
+            
+        # If user provided a custom executable path, it overrides the channel
+        if self.executable_path and os.path.exists(self.executable_path):
+            kwargs["executable_path"] = self.executable_path
+            # Remove channel if using custom path to avoid conflicts
+            kwargs.pop("channel", None) 
+            
+        return kwargs
 
     async def get_browser_and_page(self) -> tuple[Browser, Page]:
-        """
-        Launches or connects to the browser based on the selected mode.
-        Returns a tuple of (Browser, Page).
-        """
         playwright = await async_playwright().start()
         browser = None
         page = None
+        launch_args = self._get_launch_kwargs()
 
         if self.mode == self.MODE_CDP_CONNECT:
             print(f"[CDP] 🔌 Connecting to existing browser on port {self.cdp_port}...")
-            try:
-                browser = await playwright.chromium.connect_over_cdp(f"http://localhost:{self.cdp_port}")
-                # Get the first available context and page, or create a new one
-                if browser.contexts:
-                    context = browser.contexts[0]
-                    page = context.pages[0] if context.pages else await context.new_page()
-                else:
-                    context = await browser.new_context()
-                    page = await context.new_page()
-            except Exception as e:
-                raise ConnectionError(
-                    f"Failed to connect to CDP on port {self.cdp_port}. "
-                    f"Did you launch Chrome with --remote-debugging-port={self.cdp_port}?"
-                ) from e
+            browser = await playwright.chromium.connect_over_cdp(f"http://localhost:{self.cdp_port}")
+            context = browser.contexts[0] if browser.contexts else await browser.new_context()
+            page = context.pages[0] if context.pages else await context.new_page()
 
         elif self.mode == self.MODE_PERSISTENT:
-            print(f"[CDP] 💾 Launching with persistent profile: {self.profile_dir}")
+            print(f"[CDP] 💾 Launching {self.browser_type} with persistent profile...")
             os.makedirs(self.profile_dir, exist_ok=True)
-            # Persistent context keeps cookies/localStorage alive between runs
+            # Persistent context requires slightly different args
             context = await playwright.chromium.launch_persistent_context(
                 user_data_dir=self.profile_dir,
-                headless=self.headless,
+                **launch_args,
                 args=["--disable-blink-features=AutomationControlled"]
             )
-            browser = context.browser # Note: persistent context acts as the browser
+            browser = context.browser
             page = context.pages[0] if context.pages else await context.new_page()
 
         elif self.mode == self.MODE_PWA:
-            print(f"[CDP] 🚀 Launching in PWA (Standalone) mode for {self.pwa_url}")
-            browser = await playwright.chromium.launch(
-                headless=self.headless,
-                args=[
-                    f"--app={self.pwa_url}",
-                    "--disable-extensions",
-                    "--disable-blink-features=AutomationControlled"
-                ]
-            )
+            print(f"[CDP] 🚀 Launching {self.browser_type} in PWA mode for {self.pwa_url}")
+            launch_args["args"] = [f"--app={self.pwa_url}", "--disable-extensions"]
+            browser = await playwright.chromium.launch(**launch_args)
             context = await browser.new_context()
             page = await context.new_page()
-            # In PWA mode, the URL is loaded via the --app flag, but we ensure it's active
             if self.pwa_url not in page.url:
                 await page.goto(self.pwa_url)
 
         else: # Normal Launch
-            print("[CDP] 🌐 Launching standard browser instance...")
-            browser = await playwright.chromium.launch(headless=self.headless)
+            print(f"[CDP] 🌐 Launching standard {self.browser_type} instance...")
+            browser = await playwright.chromium.launch(**launch_args)
             context = await browser.new_context()
             page = await context.new_page()
 
         return browser, page
 
     async def cleanup(self, browser: Browser):
-        """Safely closes the browser/context depending on how it was launched."""
         try:
             if self.mode == self.MODE_CDP_CONNECT:
-                # Do NOT close the browser if we just connected to it!
                 await browser.close() 
             elif self.mode == self.MODE_PERSISTENT:
-                # Persistent context is closed directly
-                await browser.contexts[0].close() if browser.contexts else None
+                if browser.contexts:
+                    await browser.contexts[0].close()
             else:
                 await browser.close()
         except Exception as e:
