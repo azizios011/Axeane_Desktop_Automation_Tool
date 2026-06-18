@@ -1,23 +1,21 @@
 {
-  "universal_rules": {
-    "bank_account_pivot": "532100",
-    "inversion_logic": {
-      "doc_debit_means": {
-        "bank_action": "credit",
-        "counterpart_action": "debit",
-        "category": "Supplier/Expense"
-      },
-      "doc_credit_means": {
-        "bank_action": "debit",
-        "counterpart_action": "credit",
-        "category": "Client/Income"
-      }
+  "bank_account_pivot": "532100",
+  "inversion_logic": {
+    "doc_debit_means": {
+      "bank_action": "credit",
+      "counterpart_action": "debit",
+      "category": "Supplier/Expense"
     },
-    "tax_calculation": {
-      "detect_keyword": "DONT TVA:",
-      "default_tax_account": "436619",
-      "default_rate": 0.19,
-      "base_account": "627000"
+    "doc_credit_means": {
+      "bank_action": "debit",
+      "counterpart_action": "credit",
+      "category": "Client/Income"
     }
+  },
+  "tax_calculation": {
+    "detect_keyword": "DONT TVA:",
+    "default_tax_account": "436619",
+    "default_rate": 0.19,
+    "base_account": "627000"
   }
 }
