@@ -1,9 +1,19 @@
 # main.py
 import tkinter as tk
 from tkinter import ttk
+import traceback
 import sys
 import os
 
+def exception_handler(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    print("\n=== FULL TRACEBACK ===")
+    traceback.print_exception(exc_type, exc_value, exc_traceback)
+    print("=====================\n")
+
+sys.excepthook = exception_handler
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

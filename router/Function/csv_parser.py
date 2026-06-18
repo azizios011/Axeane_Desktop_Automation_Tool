@@ -161,6 +161,6 @@ def parse_vente_csv(file_path: str) -> tuple:
     # Log sample data for verification
     if data:
         sample = data[0]
-        log.info(f"Sample row: Client={sample.get('Client', '')}, TTC={sample.get('TTC', 0)}, TVA%={sample.get('TVA %', 0)}")
+        log.debug(f"Sample parsed row: TTC={sample.get('ttc')}, TVA%={sample.get('tva_rate')}, TVA_Amt={sample.get('tva_amt')}")
     
     return data, csv_headers

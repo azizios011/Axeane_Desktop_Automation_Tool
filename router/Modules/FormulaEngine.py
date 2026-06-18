@@ -7,9 +7,8 @@ from Debug.Logger import ColorLogger as log
 
 class FormulaEngine:
     """
-    Generates accounting formula cards from raw CSV data.
-    Handles both Vente (Sales) and Bank transactions.
-    Groups rows by reference (for multi-TVA invoices) or by keyword (for bank).
+    Groups invoice rows by reference, then generates formulas.
+    Handles multi-TVA invoices (same reference, different TVA rates).
     """
 
     def __init__(self):
@@ -75,18 +74,6 @@ class FormulaEngine:
             if float(rate_config.get("rate", -1)) == target:
                 return rate_config.get("ht_account"), rate_config.get("tva_account")
         return None, None
-
-    def _match_bank_keyword(self, label):
-        """Match bank transaction label against keywords in Bank_Formats.json"""
-        mappings = self.bank_formats.get("mappings", [])
-        label_upper = label.upper() if label else ""
-        
-        for mapping in mappings:
-            keyword = mapping.get("keyword", "").upper()
-            if keyword and keyword in label_upper:
-                return mapping
-        
-        return None
 
     def generate_vente_formula(self, rows_in_group):
         """
@@ -185,115 +172,12 @@ class FormulaEngine:
         
         return lines
 
-    def generate_bank_formula(self, row):
+    def build_cards(self, rows):
         """
-        Generate formula for a single bank transaction.
-        Returns list of accounting entries.
+        Build formula cards from raw CSV rows.
+        Groups by reference to handle multi-TVA invoices.
         """
-        label = row.get("label", "")
-        amount = float(row.get("amount", 0) or 0)
-        
-        # Match keyword
-        mapping = self._match_bank_keyword(label)
-        if not mapping:
-            log.warn(f"No mapping found for bank label: {label}")
-            return []
-        
-        # Determine inversion logic
-        is_expense = amount < 0
-        inversion = self.bank_rules.get("inversion_logic", {})
-        
-        if is_expense:
-            logic = inversion.get("doc_debit_means", {})
-            bank_action = logic.get("bank_action", "credit")
-            counterpart_action = logic.get("counterpart_action", "debit")
-        else:
-            logic = inversion.get("doc_credit_means", {})
-            bank_action = logic.get("bank_action", "debit")
-            counterpart_action = logic.get("counterpart_action", "credit")
-        
-        bank_pivot = self.bank_rules.get("bank_account_pivot", "532100")
-        abs_amount = abs(amount)
-        
-        lines = []
-        
-        # Bank pivot line
-        lines.append({
-            "step": "bank_pivot",
-            "account": bank_pivot,
-            "label": label,
-            "debit": abs_amount if bank_action == "debit" else 0,
-            "credit": abs_amount if bank_action == "credit" else 0,
-        })
-        
-        # Counterpart line(s)
-        if mapping.get("is_split"):
-            # Handle TVA split
-            tax_calc = self.bank_rules.get("tax_calculation", {})
-            detect_keyword = tax_calc.get("detect_keyword", "DONT TVA:")
-            
-            if detect_keyword.upper() in label.upper():
-                # Extract TVA amount from label
-                try:
-                    tva_part = label.split(detect_keyword)[-1].strip()
-                    tva_amt = float(tva_part.replace(",", "").replace(" ", ""))
-                    base_amt = abs_amount - tva_amt
-                    
-                    base_account = mapping.get("base_account", tax_calc.get("base_account", "627000"))
-                    tax_account = mapping.get("tax_account", tax_calc.get("default_tax_account", "436619"))
-                    
-                    lines.append({
-                        "step": "base",
-                        "account": base_account,
-                        "label": mapping.get("label", "Base"),
-                        "debit": base_amt if counterpart_action == "debit" else 0,
-                        "credit": base_amt if counterpart_action == "credit" else 0,
-                    })
-                    
-                    lines.append({
-                        "step": "tax",
-                        "account": tax_account,
-                        "label": "TVA",
-                        "debit": tva_amt if counterpart_action == "debit" else 0,
-                        "credit": tva_amt if counterpart_action == "credit" else 0,
-                    })
-                except Exception as e:
-                    log.error(f"Failed to parse TVA split: {e}")
-                    # Fallback to single line
-                    lines.append({
-                        "step": "counterpart",
-                        "account": mapping.get("account", "627000"),
-                        "label": mapping.get("label", "Unknown"),
-                        "debit": abs_amount if counterpart_action == "debit" else 0,
-                        "credit": abs_amount if counterpart_action == "credit" else 0,
-                    })
-            else:
-                # No TVA detected, use single line
-                lines.append({
-                    "step": "counterpart",
-                    "account": mapping.get("account", "627000"),
-                    "label": mapping.get("label", "Unknown"),
-                    "debit": abs_amount if counterpart_action == "debit" else 0,
-                    "credit": abs_amount if counterpart_action == "credit" else 0,
-                })
-        else:
-            # Single counterpart line
-            lines.append({
-                "step": "counterpart",
-                "account": mapping.get("account", "627000"),
-                "label": mapping.get("label", "Unknown"),
-                "debit": abs_amount if counterpart_action == "debit" else 0,
-                "credit": abs_amount if counterpart_action == "credit" else 0,
-            })
-        
-        return lines
-
-    def build_vente_cards(self, rows):
-        """
-        Build formula cards for sale transactions.
-        Groups rows by reference to handle multi-TVA invoices.
-        """
-        log.info(f"Building vente cards for {len(rows)} rows...")
+        log.info(f"Building cards for {len(rows)} rows...")
         
         # Group by reference
         ref_groups = defaultdict(list)
@@ -303,13 +187,17 @@ class FormulaEngine:
         
         cards = []
         for ref, rows_in_ref in ref_groups.items():
-            # Generate formula for this reference group
-            formula_lines = self.generate_vente_formula(rows_in_ref)
-            
-            # Extract client info from first row
+            # Use first row for client info
             first_row = rows_in_ref[0]
             client_name = self._extract_client_name(first_row.get("client_name", ""))
             profile, match_type, match_key = self._match_client_profile(client_name)
+            
+            if not profile:
+                log.warn(f"No profile found for client: {client_name}")
+                continue
+            
+            # Generate formula for this reference group
+            formula_lines = self.generate_vente_formula(rows_in_ref)
             
             # Calculate totals
             total_ttc = sum(float(r.get("ttc", 0) or 0) for r in rows_in_ref)
@@ -317,12 +205,15 @@ class FormulaEngine:
             total_credit = sum(l["credit"] for l in formula_lines)
             is_balanced = abs(total_debit - total_credit) < 0.01
             
-            # Count unique TVA rates
-            tva_rates = sorted(set(float(r.get("tva_rate", 0) or 0) for r in rows_in_ref if float(r.get("tva_rate", 0) or 0) > 0))
+            # Collect unique TVA rates (filter out 0.0)
+            tva_rates = sorted(set(
+                float(r.get("tva_rate", 0) or 0) 
+                for r in rows_in_ref 
+                if float(r.get("tva_rate", 0) or 0) > 0
+            ))
             
             card = {
                 "ref": ref,
-                "client_name": client_name,
                 "match_key": match_key,
                 "match_type": match_type,
                 "profile": profile,
@@ -333,6 +224,7 @@ class FormulaEngine:
                 "total_debit": total_debit,
                 "total_credit": total_credit,
                 "is_balanced": is_balanced,
+                "sample_client": client_name,
             }
             
             cards.append(card)
@@ -340,82 +232,11 @@ class FormulaEngine:
         # Sort by reference
         cards.sort(key=lambda c: c["ref"])
         
-        log.success(f"Built {len(cards)} vente cards")
+        log.success(f"Built {len(cards)} cards")
         for c in cards:
             rates_str = "+".join(f"{int(r)}%" for r in c["tva_rates"]) if c["tva_rates"] else "N/A"
             balance_str = "✓" if c["is_balanced"] else "✗"
             log.info(f"  • {c['ref']:15s} | {c['match_key']:20s} | TVA: {rates_str:10s} | {c['row_count']} rows | TTC {c['total_ttc']:>11.3f} | {balance_str}")
         
         return cards
-
-    def build_bank_cards(self, rows):
-        """
-        Build formula cards for bank transactions.
-        Each row is a separate card (no grouping).
-        """
-        log.info(f"Building bank cards for {len(rows)} rows...")
-        
-        cards = []
-        for row in rows:
-            formula_lines = self.generate_bank_formula(row)
-            
-            # Extract info
-            label = row.get("label", "")
-            amount = float(row.get("amount", 0) or 0)
-            mapping = self._match_bank_keyword(label)
-            
-            # Calculate totals
-            total_debit = sum(l["debit"] for l in formula_lines)
-            total_credit = sum(l["credit"] for l in formula_lines)
-            is_balanced = abs(total_debit - total_credit) < 0.01
-            
-            card = {
-                "ref": row.get("ref", "UNKNOWN"),
-                "label": label,
-                "match_key": mapping.get("keyword", "UNKNOWN") if mapping else "NO MATCH",
-                "match_type": "specific" if mapping else "none",
-                "mapping": mapping,
-                "row_count": 1,
-                "total_amount": amount,
-                "formula_lines": formula_lines,
-                "total_debit": total_debit,
-                "total_credit": total_credit,
-                "is_balanced": is_balanced,
-            }
-            
-            cards.append(card)
-        
-        log.success(f"Built {len(cards)} bank cards")
-        
-        return cards
-
-    def build_cards(self, rows, doc_type="Vente"):
-        """
-        Main entry point. Builds formula cards based on document type.
-        """
-        self.cards = []
-        
-        if doc_type == "Vente":
-            self.cards = self.build_vente_cards(rows)
-        elif doc_type == "Bank":
-            self.cards = self.build_bank_cards(rows)
-        else:
-            log.error(f"Unknown document type: {doc_type}")
-        
-        return self.cards
-
-    def get_summary(self):
-        """Get a summary of all generated cards"""
-        if not self.cards:
-            return {}
-        
-        total_rows = sum(c["row_count"] for c in self.cards)
-        balanced_count = sum(1 for c in self.cards if c["is_balanced"])
-        
-        return {
-            "total_cards": len(self.cards),
-            "total_rows": total_rows,
-            "balanced_cards": balanced_count,
-            "unbalanced_cards": len(self.cards) - balanced_count,
-        }
         
