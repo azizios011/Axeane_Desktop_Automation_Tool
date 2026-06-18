@@ -30,6 +30,7 @@ def parse_vente_csv(file_path: str) -> list:
     
     data = []
     errors = 0
+    csv_headers = []
     
     try:
         with open(file_path, mode='r', encoding='utf-8') as f:
@@ -43,30 +44,34 @@ def parse_vente_csv(file_path: str) -> list:
                 
             reader = csv.DictReader(f, dialect=dialect)
             csv_headers = reader.fieldnames
-            log.info(f"CSV Headers found: {csv_headers}")
+            log.info(f"CSV Headers found (in order): {csv_headers}")
             
             for row_num, row in enumerate(reader, start=2): # start=2 because row 1 is header
                 try:
+                    # Skip Grand Total row (check if Reference column is empty or contains "Grand Total")
+                    ref_val = row.get("Reference", "").strip()
+                    if not ref_val or ref_val.lower() == "grand total":
+                        log.debug(f"Row {row_num}: Skipping summary/empty row")
+                        continue
+                    
+                    # Store ALL columns from CSV in their original order
                     parsed_row = {}
-                    for csv_col, internal_key in col_map.items():
-                        internal_key = internal_key.strip()
-                        csv_col = csv_col.strip()
+                    for csv_col in csv_headers:
+                        csv_col_stripped = csv_col.strip()
+                        val = row.get(csv_col, "").strip() if row.get(csv_col) else ""
                         
-                        if csv_col not in row:
-                            log.warn(f"Row {row_num}: Missing column '{csv_col}' in CSV")
-                            continue
-                            
-                        val = row[csv_col].strip() if row[csv_col] else ""
+                        # Type conversion based on internal key mapping
+                        internal_key = col_map.get(csv_col_stripped, csv_col_stripped)
                         
-                        # Type conversion based on internal key
-                        if internal_key in ["net_ht", "tva_amt", "ttc"]:
+                        if internal_key in ["net_ht", "tva_amt", "ttc", "ht", "remise", "net_ht_raw", "fodec"]:
                             # Handle thousand separators (commas) and decimal points
                             val = float(val.replace(",", "").replace(" ", "")) if val else 0.0
                         elif internal_key == "tva_rate":
                             # Handle "19.00 %" -> 19.00
                             val = float(val.replace("%", "").replace(",", ".").strip()) if val else 0.0
                             
-                        parsed_row[internal_key] = val
+                        # Store with CSV column name as key (to preserve order in table)
+                        parsed_row[csv_col_stripped] = val
                         
                     data.append(parsed_row)
                 except Exception as e:
@@ -78,5 +83,5 @@ def parse_vente_csv(file_path: str) -> list:
         return []
         
     log.success(f"CSV parsing complete. {len(data)} rows loaded, {errors} errors.")
-    return data
+    return data, csv_headers  # Return both data and headers
     

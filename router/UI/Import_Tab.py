@@ -34,7 +34,7 @@ class ImportTab:
         self.btn_process.pack(side="right", padx=10)
 
         # Raw Data Table Title
-        raw_title = ttk.Label(self.frame, text="2. Raw CSV Preview (Columns mapped from Structure.json)", 
+        raw_title = ttk.Label(self.frame, text="2. Raw CSV Preview (Columns in CSV order)", 
                               font=("Segoe UI", 12, "bold"))
         raw_title.pack(pady=(15, 5), padx=20, anchor="w")
 
@@ -44,41 +44,24 @@ class ImportTab:
         
         self.raw_tree = ttk.Treeview(self.raw_tree_frame, show="headings", height=10)
         self.raw_vsb = ttk.Scrollbar(self.raw_tree_frame, orient="vertical", command=self.raw_tree.yview)
-        self.raw_tree.configure(yscrollcommand=self.raw_vsb.set)
+        self.raw_hsb = ttk.Scrollbar(self.raw_tree_frame, orient="horizontal", command=self.raw_tree.xview)
+        self.raw_tree.configure(yscrollcommand=self.raw_vsb.set, xscrollcommand=self.raw_hsb.set)
         
-        self.raw_tree.pack(side="left", fill="both", expand=True)
-        self.raw_vsb.pack(side="right", fill="y")
+        self.raw_tree.grid(row=0, column=0, sticky="nsew")
+        self.raw_vsb.grid(row=0, column=1, sticky="ns")
+        self.raw_hsb.grid(row=1, column=0, sticky="ew")
+        
+        self.raw_tree_frame.grid_rowconfigure(0, weight=1)
+        self.raw_tree_frame.grid_columnconfigure(0, weight=1)
 
         self.status_label = ttk.Label(self.frame, text="Status: Idle", foreground="gray")
         self.status_label.pack(pady=5)
-        
-        self._on_type_change() # Initialize columns for default type
 
     def _on_type_change(self):
-        """Dynamically updates the Raw Treeview columns based on the selected Structure.json"""
-        doc_type = self.doc_type.get()
-        json_path = f"DB/{doc_type}_Structure.json"
-        
-        # Clear existing columns
+        """Clears the table when switching document types"""
         self.raw_tree["columns"] = ()
-        
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    structure = strip_keys(json.load(f))
-                
-                # Get column names from the mapping keys (these are the CSV headers)
-                col_mapping = structure.get("column_mapping", {})
-                columns = list(col_mapping.keys())
-                
-                if columns:
-                    self.raw_tree["columns"] = columns
-                    for col in columns:
-                        self.raw_tree.heading(col, text=col)
-                        self.raw_tree.column(col, width=120, anchor="w")
-                    log.debug(f"Treeview columns updated for {doc_type}: {columns}")
-            except Exception as e:
-                log.error(f"Error loading structure {json_path}: {e}")
+        for item in self.raw_tree.get_children():
+            self.raw_tree.delete(item)
 
     def _browse_file(self):
         path = filedialog.askopenfilename(filetypes=[("CSV/Excel", "*.csv *.xlsx")])
@@ -101,18 +84,22 @@ class ImportTab:
             log.info(f"Document type selected: {doc_type}")
             
             if doc_type == "Vente":
-                parsed_data = parse_vente_csv(path)
+                result = parse_vente_csv(path)
+                if result:
+                    parsed_data, csv_headers = result
+                else:
+                    parsed_data, csv_headers = [], []
             else:
                 # TODO: Implement parse_bank_csv
                 log.warn("Bank parsing not yet implemented.")
-                parsed_data = []
+                parsed_data, csv_headers = [], []
 
             if not parsed_data:
                 self.frame.after(0, lambda: self.status_label.config(text="Status: No data parsed. Check logs.", foreground="red"))
                 return
 
             # Update Raw Table UI safely
-            self.frame.after(0, self._populate_raw_table, parsed_data)
+            self.frame.after(0, self._populate_raw_table, parsed_data, csv_headers)
             
             # Store raw data in shared state
             self.state["raw_data"] = parsed_data
@@ -122,28 +109,40 @@ class ImportTab:
             log.error(f"Fatal error in _parse_logic: {e}")
             self.frame.after(0, lambda: self.status_label.config(text=f"Error: {str(e)}", foreground="red"))
 
-    def _populate_raw_table(self, raw_data):
-        """Clears and fills the raw CSV table"""
+    def _populate_raw_table(self, raw_data, csv_headers):
+        """Clears and fills the raw CSV table with columns in CSV order"""
+        # Clear existing data
         for item in self.raw_tree.get_children():
             self.raw_tree.delete(item)
-            
-        # Get current columns from treeview
-        columns = self.raw_tree["columns"]
         
+        # Set columns in CSV order
+        self.raw_tree["columns"] = csv_headers
+        for col in csv_headers:
+            self.raw_tree.heading(col, text=col)
+            # Auto-size columns based on content (max 150px)
+            max_width = max(len(str(col)) * 10, 80)
+            for row in raw_data[:50]:  # Sample first 50 rows
+                val_len = len(str(row.get(col, ""))) * 8
+                max_width = max(max_width, min(val_len, 150))
+            self.raw_tree.column(col, width=max_width, anchor="w")
+            
+        log.info(f"Table columns set in CSV order: {csv_headers}")
+        
+        # Insert data rows
         for row in raw_data:
-            # Map row values to the current columns
-            values = []
-            for col in columns:
-                val = row.get(col, "")
-                # Format floats nicely for display
+            values = [row.get(col, "") for col in csv_headers]
+            # Format floats nicely for display
+            formatted_values = []
+            for val in values:
                 if isinstance(val, float):
-                    val = f"{val:,.3f}"
-                values.append(val)
-            self.raw_tree.insert("", "end", values=values)
+                    formatted_values.append(f"{val:,.3f}")
+                else:
+                    formatted_values.append(val)
+            self.raw_tree.insert("", "end", values=formatted_values)
             
         log.success(f"Populated raw table with {len(raw_data)} rows.")
 
     def _on_parse_success(self, count):
         self.status_label.config(text=f"Status: Success! Loaded {count} raw rows.", foreground="green")
         self.callback() # Triggers Table_Tab refresh
-    
+        
