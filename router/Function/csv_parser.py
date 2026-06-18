@@ -5,25 +5,50 @@ import os
 from Debug.Logger import ColorLogger as log
 
 def strip_keys(d):
-    """Recursively strip whitespace from dictionary keys."""
+    """Recursively strip whitespace from dictionary keys to fix JSON formatting issues."""
     if isinstance(d, dict):
         return {k.strip(): strip_keys(v) for k, v in d.items()}
     elif isinstance(d, list):
         return [strip_keys(i) for i in d]
     return d
 
+def parse_number(value):
+    """Parse numeric values handling French format (comma as thousand separator, dot as decimal)."""
+    if not value or value.strip() == '':
+        return 0.0
+    
+    # Remove thousand separators (commas) and spaces
+    value = value.replace(',', '').replace(' ', '')
+    
+    try:
+        return float(value)
+    except ValueError:
+        log.warn(f"Could not parse number: {value}")
+        return 0.0
+
+def parse_percentage(value):
+    """Parse percentage values like '19.00 %' -> 19.0"""
+    if not value or value.strip() == '':
+        return 0.0
+    
+    # Remove percentage sign and spaces
+    value = value.replace('%', '').replace(',', '.').strip()
+    
+    try:
+        return float(value)
+    except ValueError:
+        log.warn(f"Could not parse percentage: {value}")
+        return 0.0
+
 def parse_vente_csv(file_path: str) -> tuple:
-    """
-    Reads the Vente CSV and maps columns to the JSON structure.
-    Returns: (parsed_data_list, csv_headers_list)
-    """
+    """Reads the Vente CSV and maps columns to the JSON structure."""
     log.info(f"Starting CSV parse for: {file_path}")
     
     # Load structure
     struct_path = "DB/Vente_Structure.json"
     if not os.path.exists(struct_path):
         log.error(f"Structure file not found: {struct_path}")
-        return [], []  # Return empty tuple
+        return [], []
         
     with open(struct_path, 'r', encoding='utf-8') as f:
         structure = strip_keys(json.load(f))
@@ -70,16 +95,20 @@ def parse_vente_csv(file_path: str) -> tuple:
                         csv_col_stripped = csv_col.strip()
                         val = row.get(csv_col_stripped, "").strip() if row.get(csv_col_stripped) else ""
                         
-                        # Type conversion based on internal key mapping
+                        # Get internal key for type conversion
                         internal_key = col_map.get(csv_col_stripped, csv_col_stripped)
                         
+                        # Type conversion based on field type
                         if internal_key in ["net_ht", "tva_amt", "ttc", "ht_brut", "remise", "net_ht_raw", "fodec"]:
-                            val = float(val.replace(",", "").replace(" ", "")) if val else 0.0
+                            # Parse numeric fields
+                            parsed_row[csv_col_stripped] = parse_number(val)
                         elif internal_key == "tva_rate":
-                            val = float(val.replace("%", "").replace(",", ".").strip()) if val else 0.0
+                            # Parse percentage fields
+                            parsed_row[csv_col_stripped] = parse_percentage(val)
+                        else:
+                            # Keep as string
+                            parsed_row[csv_col_stripped] = val
                             
-                        parsed_row[csv_col_stripped] = val
-                        
                     data.append(parsed_row)
                 except Exception as e:
                     errors += 1
@@ -87,8 +116,8 @@ def parse_vente_csv(file_path: str) -> tuple:
                     
     except Exception as e:
         log.error(f"Failed to open/read CSV file: {e}")
-        return [], []  # Return empty tuple
+        return [], []
         
     log.success(f"CSV parsing complete. {len(data)} rows loaded, {errors} errors.")
-    return data, csv_headers  # Return both data AND headers
+    return data, csv_headers
     
