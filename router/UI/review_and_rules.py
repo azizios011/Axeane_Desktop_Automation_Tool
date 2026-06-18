@@ -133,66 +133,75 @@ class ReviewAndRulesTab:
         finally:
             self.btn_generate.config(state="normal")
 
+# UI/review_and_rules.py — updated _display_formulas method
+
     def _display_formulas(self, cards):
-        """Display all formula cards in the treeview"""
-        # Clear existing items
+        """Display template cards in the treeview"""
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         for card in cards:
-            # Safely get values with fallbacks
-            ref = card.get("ref", "UNKNOWN")
-            sample_client = card.get("sample_client", "Unknown Client")
-            match_key = card.get("match_key", "N/A")
-            is_balanced = card.get("is_balanced", False)
-            total_debit = card.get("total_debit", 0)
-            total_credit = card.get("total_credit", 0)
-            row_count = card.get("row_count", 0)
-            formula_lines = card.get("formula_lines", [])
+            match_key = card.get("match_key", "UNKNOWN")
+            match_type = card.get("match_type", "none")
+            invoice_count = card.get("invoice_count", 0)
+            total_ttc = card.get("total_ttc", 0)
+            sample_client = card.get("sample_client", "")
+            tva_rates = card.get("tva_rates", [])
+            use_cash = card.get("use_cash", False)
+            use_timbre = card.get("use_timbre", False)
+            compte_client = card.get("compte_client", "")
+            template_lines = card.get("template_lines", [])
 
-            # Parent row (Invoice header)
-            balance_status = "✓" if is_balanced else "✗"
-            parent_text = f"{ref} | {sample_client[:40]} | Profile: {match_key}"
+            # Build parent row text
+            rates_str = "+".join(f"{int(r)}%" for r in tva_rates) if tva_rates else "N/A"
+            flags = []
+            if use_cash:
+                flags.append("CASH")
+            if use_timbre:
+                flags.append("TIMBRE")
+            flags_str = " | ".join(flags) if flags else ""
+
+            parent_text = (
+                f"[{match_type.upper()}] {match_key} — "
+                f"{invoice_count} invoices | TTC: {total_ttc:,.3f} | "
+                f"TVA: {rates_str}"
+            )
+            if flags_str:
+                parent_text += f" | {flags_str}"
 
             parent_id = self.tree.insert(
                 "", "end",
-                text=f"{parent_text} [{balance_status}]",
+                text=parent_text,
                 values=(
-                    ref,
+                    match_key,
+                    "",
+                    compte_client,
+                    f"Template: {sample_client[:40]}",
                     "",
                     "",
-                    "",
-                    f"{total_debit:.3f}",
-                    f"{total_credit:.3f}",
-                    f"{row_count} rows"
+                    f"{len(template_lines)} lines"
                 ),
-                open=False
+                open=True
             )
 
-            # Child rows (Journal entries)
-            for i, line in enumerate(formula_lines):
-                # Safely get row_num (generate if missing)
-                row_num = line.get("row_num", i + 1)
-                account = line.get("account", "")
-                label = line.get("label", "")
-                debit = line.get("debit", 0)
-                credit = line.get("credit", 0)
-                step = line.get("step", "")
+            # Child rows: template formula lines
+            for i, line in enumerate(template_lines, start=1):
+                debit_str = f"{line['debit']:,.3f}" if line.get("debit", 0) > 0 else ""
+                credit_str = f"{line['credit']:,.3f}" if line.get("credit", 0) > 0 else ""
 
                 self.tree.insert(
                     parent_id, "end",
                     text="",
                     values=(
                         "",
-                        row_num,
-                        account,
-                        label,
-                        f"{debit:.3f}" if debit > 0 else "",
-                        f"{credit:.3f}" if credit > 0 else "",
-                        step
+                        i,
+                        line.get("account", ""),
+                        line.get("label", ""),
+                        debit_str,
+                        credit_str,
+                        line.get("step", "")
                     )
                 )
-
         log.info(f"Successfully displayed {len(cards)} formula cards in treeview")
 
     def _clear_formulas(self):

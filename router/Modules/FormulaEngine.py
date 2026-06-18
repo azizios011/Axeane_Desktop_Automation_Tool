@@ -7,8 +7,8 @@ from Debug.Logger import ColorLogger as log
 
 class FormulaEngine:
     """
-    Groups invoice rows by reference, then generates formulas.
-    Handles multi-TVA invoices (same reference, different TVA rates).
+    Groups invoices by CLIENT PROFILE (not by reference).
+    Creates ONE template card per profile showing the formula structure.
     """
 
     def __init__(self):
@@ -38,6 +38,7 @@ class FormulaEngine:
         return client_field.strip()
 
     def _match_client_profile(self, client_name):
+        """Returns (profile_dict, match_type, match_key)"""
         profiles = self.vente_formats.get("client_profiles", [])
         client_upper = client_name.upper()
 
@@ -52,7 +53,7 @@ class FormulaEngine:
             if profile.get("match", "").upper() == "DEFAULT":
                 return profile, "default", "DEFAULT"
 
-        return None, "none", None
+        return None, "none", "UNMATCHED"
 
     def _get_tax_accounts(self, tva_rate):
         rates = self.vente_rules.get("accounting_logic", {}).get("tax_logic", {}).get("rates", [])
@@ -66,202 +67,186 @@ class FormulaEngine:
                 return rate_config.get("ht_account"), rate_config.get("tva_account")
         return None, None
 
-    def _generate_formula_lines(self, rows_in_ref, profile):
+    def _generate_template_formula(self, profile, sample_invoices):
         """
-        Generate accounting lines for a group of rows sharing the same reference.
-        
-        KEY RULES:
-        - TTC (client debit) is taken from the FIRST row only (it's the same total for all rows)
-        - TVA and HT are summed across all rows (each row has its own rate)
-        - Timbre is added ONCE per invoice, not per row
+        Generate the TEMPLATE formula for a profile.
+        Uses the first invoice as a sample, but includes ALL TVA rates found across all invoices.
         """
-        if not profile or not rows_in_ref:
+        if not profile or not sample_invoices:
             return []
 
         lines = []
-        row_num = 1
-
-        # CRITICAL: Use TTC from FIRST row only (it's the invoice total, repeated in every row)
-        first_row = rows_in_ref[0]
-        ttc = float(first_row.get("ttc", 0) or 0)
-        client_name = self._extract_client_name(first_row.get("client_name", ""))
-
+        compte_client = profile.get("compte_client")
         use_timbre = profile.get("use_timbre", False)
         use_cash = profile.get("use_cash", False)
-        compte_client = profile.get("compte_client")
 
-        # Step 1: Client Total (Debit TTC) — ONCE per invoice
+        # Use first invoice as sample for amounts
+        sample = sample_invoices[0]
+        ttc = float(sample.get("ttc", 0) or 0)
+
+        # Collect ALL unique TVA rates from all invoices in this group
+        all_tva_rates = set()
+        for inv in sample_invoices:
+            rate = float(inv.get("tva_rate", 0) or 0)
+            if rate > 0:
+                all_tva_rates.add(rate)
+
+        # Step 1: Client Total (Debit TTC)
         lines.append({
-            "row_num": row_num,
             "step": "client_total",
             "account": compte_client,
-            "label": client_name,
+            "label": "Client (from profile)",
             "debit": ttc,
             "credit": 0,
         })
-        row_num += 1
 
-        # Step 2 & 3: TVA and Revenue for EACH row (handles multi-TVA)
-        for row in rows_in_ref:
-            tva_rate = float(row.get("tva_rate", 0) or 0)
-            tva_amt = float(row.get("tva_amt", 0) or 0)
-            net_ht = float(row.get("net_ht", 0) or 0)
+        # Step 2 & 3: For each unique TVA rate found, show TVA + Revenue lines
+        for rate in sorted(all_tva_rates):
+            ht_account, tva_account = self._get_tax_accounts(rate)
 
-            ht_account, tva_account = self._get_tax_accounts(tva_rate)
-
-            if tva_account and tva_amt > 0:
+            if tva_account:
                 lines.append({
-                    "row_num": row_num,
-                    "step": f"tax_split_{int(tva_rate)}",
+                    "step": f"tax_split_{int(rate)}",
                     "account": tva_account,
-                    "label": f"TVA {int(tva_rate)}%",
+                    "label": f"TVA {int(rate)}%",
                     "debit": 0,
-                    "credit": tva_amt,
+                    "credit": 0,  # Template: amount varies per invoice
                 })
-                row_num += 1
 
-            if ht_account and net_ht > 0:
+            if ht_account:
                 lines.append({
-                    "row_num": row_num,
-                    "step": f"revenue_split_{int(tva_rate)}",
+                    "step": f"revenue_split_{int(rate)}",
                     "account": ht_account,
-                    "label": f"Revenue {int(tva_rate)}%",
+                    "label": f"Revenue {int(rate)}%",
                     "debit": 0,
-                    "credit": net_ht,
+                    "credit": 0,  # Template: amount varies per invoice
                 })
-                row_num += 1
 
-        # Step 4: Timbre Fiscal — ONCE per invoice (not per row!)
+        # Step 4: Timbre Fiscal (if applicable)
         if use_timbre:
             timbre_cfg = self.vente_rules.get("accounting_logic", {}).get("timbre_fiscal", {})
-            timbre_account = timbre_cfg.get("account", "437000")
-            timbre_amount = float(timbre_cfg.get("default_amount", 1.0))
-
             lines.append({
-                "row_num": row_num,
                 "step": "timbre",
-                "account": timbre_account,
+                "account": timbre_cfg.get("account", "437000"),
                 "label": timbre_cfg.get("label", "TIMBRE FISCAL"),
                 "debit": 0,
-                "credit": timbre_amount,
+                "credit": float(timbre_cfg.get("default_amount", 1.0)),
             })
-            row_num += 1
 
-        # Step 5: Cash Reroute — if applicable
+        # Step 5: Cash Reroute (if applicable)
         if use_cash:
             caisse_account = profile.get("compte_caisse", "541100")
-
             lines.append({
-                "row_num": row_num,
                 "step": "cash_reroute_credit",
                 "account": compte_client,
-                "label": "Cash reroute",
+                "label": "Cash reroute (credit client)",
                 "debit": 0,
                 "credit": ttc,
             })
-            row_num += 1
-
             lines.append({
-                "row_num": row_num,
                 "step": "cash_reroute_debit",
                 "account": caisse_account,
-                "label": "Caisse",
+                "label": "Caisse (debit)",
                 "debit": ttc,
                 "credit": 0,
             })
-            row_num += 1
 
         return lines
 
     def build_cards(self, rows):
         """
-        Build formula cards from raw CSV rows.
-        Groups by reference to handle multi-TVA invoices.
+        Build TEMPLATE cards grouped by client profile.
+        Each card represents ONE profile (PASSAGER, DEFAULT, etc.)
+        and shows the formula template + how many invoices use it.
         """
-        log.info(f"Building cards for {len(rows)} rows...")
+        log.info(f"Building template cards for {len(rows)} rows...")
 
-        # Group by reference
-        ref_groups = defaultdict(list)
+        # Group rows by profile match_key
+        profile_groups = defaultdict(list)
         for row in rows:
-            ref = row.get("ref", "UNKNOWN")
-            ref_groups[ref].append(row)
+            client_name = self._extract_client_name(row.get("client_name", ""))
+            profile, match_type, match_key = self._match_client_profile(client_name)
+            group_key = match_key  # "PASSAGER", "DEFAULT", "TUNISIE AUTOMOTIVE", etc.
+            profile_groups[group_key].append({
+                "row": row,
+                "profile": profile,
+                "match_type": match_type,
+                "match_key": match_key,
+            })
 
         cards = []
-        for ref, rows_in_ref in ref_groups.items():
-            # Use first row for client info
-            first_row = rows_in_ref[0]
-            client_name = self._extract_client_name(first_row.get("client_name", ""))
-            profile, match_type, match_key = self._match_client_profile(client_name)
+        for match_key, items in profile_groups.items():
+            profile = items[0]["profile"]
+            match_type = items[0]["match_type"]
 
             if not profile:
-                log.warn(f"No profile found for client: {client_name}")
+                log.warn(f"No profile found for group: {match_key}")
                 continue
 
-            # Generate formula lines
-            formula_lines = self._generate_formula_lines(rows_in_ref, profile)
+            # Generate template formula
+            sample_rows = [item["row"] for item in items]
+            template_lines = self._generate_template_formula(profile, sample_rows)
 
-            # CRITICAL FIX: TTC is from first row only (it's the invoice total, repeated per row)
-            ttc = float(first_row.get("ttc", 0) or 0)
-
-            total_debit = sum(l["debit"] for l in formula_lines)
-            total_credit = sum(l["credit"] for l in formula_lines)
-            is_balanced = abs(total_debit - total_credit) < 0.01
+            # Calculate totals across ALL invoices in this group
+            total_ttc = sum(float(item["row"].get("ttc", 0) or 0) for item in items)
+            invoice_count = len(items)
 
             # Collect unique TVA rates
             tva_rates = sorted(set(
-                float(r.get("tva_rate", 0) or 0)
-                for r in rows_in_ref
-                if float(r.get("tva_rate", 0) or 0) > 0
+                float(item["row"].get("tva_rate", 0) or 0)
+                for item in items
+                if float(item["row"].get("tva_rate", 0) or 0) > 0
             ))
 
+            # Sample client name for display
+            sample_client = self._extract_client_name(items[0]["row"].get("client_name", ""))
+
             card = {
-                "ref": ref,
                 "match_key": match_key,
                 "match_type": match_type,
                 "profile": profile,
-                "row_count": len(rows_in_ref),
+                "invoice_count": invoice_count,
+                "total_ttc": total_ttc,
                 "tva_rates": tva_rates,
-                "total_ttc": ttc,
-                "formula_lines": formula_lines,
-                "total_debit": total_debit,
-                "total_credit": total_credit,
-                "is_balanced": is_balanced,
-                "sample_client": client_name,  # FIX: Added missing key
+                "template_lines": template_lines,
+                "sample_client": sample_client,
+                "use_cash": profile.get("use_cash", False),
+                "use_timbre": profile.get("use_timbre", False),
+                "compte_client": profile.get("compte_client"),
             }
 
             cards.append(card)
 
-            if not is_balanced:
-                log.warn(f"Formula for {ref} is NOT balanced! Debit: {total_debit}, Credit: {total_credit}")
+        # Sort: specific profiles first, then default
+        priority = {"specific": 0, "default": 1, "none": 2}
+        cards.sort(key=lambda c: (priority.get(c["match_type"], 9), -c["invoice_count"]))
 
-        # Sort by reference
-        cards.sort(key=lambda c: c["ref"])
-
-        log.success(f"Built {len(cards)} cards")
+        log.success(f"Built {len(cards)} template cards")
         for c in cards:
             rates_str = "+".join(f"{int(r)}%" for r in c["tva_rates"]) if c["tva_rates"] else "N/A"
-            balance_str = "✓" if c["is_balanced"] else "✗"
-            log.info(f"  • {c['ref']:15s} | {c['sample_client'][:20]:20s} | TVA: {rates_str:10s} | {c['row_count']} rows | TTC {c['total_ttc']:>11.3f} | {balance_str}")
+            cash_str = " [CASH]" if c["use_cash"] else ""
+            log.info(
+                f"  • [{c['match_type'].upper():8s}] {c['match_key']:25s} | "
+                f"{c['invoice_count']:3d} invoices | TTC {c['total_ttc']:>12.3f} | "
+                f"TVA: {rates_str}{cash_str}"
+            )
 
         return cards
 
     def get_summary(self):
         if not hasattr(self, 'cards') or not self.cards:
-            # Rebuild from stored cards if needed
             return {
                 "total_cards": 0,
-                "total_rows": 0,
-                "balanced_cards": 0,
-                "unbalanced_cards": 0,
+                "total_invoices": 0,
+                "total_ttc": 0,
             }
 
-        total_rows = sum(c["row_count"] for c in self.cards)
-        balanced_count = sum(1 for c in self.cards if c["is_balanced"])
+        total_invoices = sum(c["invoice_count"] for c in self.cards)
+        total_ttc = sum(c["total_ttc"] for c in self.cards)
 
         return {
             "total_cards": len(self.cards),
-            "total_rows": total_rows,
-            "balanced_cards": balanced_count,
-            "unbalanced_cards": len(self.cards) - balanced_count,
+            "total_invoices": total_invoices,
+            "total_ttc": total_ttc,
         }
         
