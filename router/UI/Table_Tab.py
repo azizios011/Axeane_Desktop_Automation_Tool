@@ -9,8 +9,17 @@ class TableTab:
         self._build_ui()
 
     def _build_ui(self):
-        title = ttk.Label(self.frame, text="Generated Journal Entries (Ready for Axeane)", font=("Segoe UI", 14, "bold"))
-        title.pack(pady=10, padx=20, anchor="w")
+        # Configure grid weights for the main frame
+        self.frame.grid_rowconfigure(1, weight=1)  # Row 1 (table) expands
+        self.frame.grid_columnconfigure(0, weight=1)  # Column 0 expands
+
+        # Title - using grid instead of pack
+        title = ttk.Label(
+            self.frame, 
+            text="Generated Journal Entries (Ready for Axeane)", 
+            font=("Segoe UI", 14, "bold")
+        )
+        title.grid(row=0, column=0, pady=10, padx=20, sticky="w")
 
         # Treeview (Table)
         columns = ("ref", "date", "account", "label", "debit", "credit")
@@ -37,13 +46,10 @@ class TableTab:
         hsb = ttk.Scrollbar(self.frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-        # Grid Layout for Table
+        # Grid Layout for Table - all using grid now
         self.tree.grid(row=1, column=0, sticky="nsew", padx=(20, 0), pady=10)
         vsb.grid(row=1, column=1, sticky="ns", pady=10)
         hsb.grid(row=2, column=0, sticky="ew", padx=(20, 0))
-        
-        self.frame.grid_rowconfigure(1, weight=1)
-        self.frame.grid_columnconfigure(0, weight=1)
 
     def refresh_table(self):
         """Clears and repopulates the table from shared_state"""
