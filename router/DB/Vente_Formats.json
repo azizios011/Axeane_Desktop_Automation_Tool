@@ -1,0 +1,29 @@
+{
+  "client_profiles": [
+    {
+      "match": "DEFAULT",
+      "compte_client": "411000",
+      "use_timbre": true,
+      "use_cash": false
+    },
+    {
+      "match": "PASSAGER",
+      "compte_client": "411000",
+      "use_timbre": true,
+      "use_cash": true,
+      "compte_caisse": "541100"
+    },
+    {
+      "match": "TUNISIE AUTOMOTIVE",
+      "compte_client": "411032",
+      "use_timbre": true,
+      "use_cash": false
+    },
+    {
+      "match": "STE OTO MOOVE",
+      "compte_client": "411053",
+      "use_timbre": true,
+      "use_cash": false
+    }
+  ]
+}

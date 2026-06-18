@@ -1,0 +1,35 @@
+{
+  "mappings": [
+    {
+      "keyword": "ACHAT SONEDE",
+      "account": "461000",
+      "label": "SONEDE Utility"
+    },
+    {
+      "keyword": "ACHAT SMG ARIANA",
+      "account": "108000",
+      "label": "MG Ariana Purchase"
+    },
+    {
+      "keyword": "TUNISIANA",
+      "account": "626000",
+      "label": "Telecom Expense"
+    },
+    {
+      "keyword": "COM & TVA",
+      "is_split": true,
+      "base_account": "627000",
+      "tax_account": "436619"
+    },
+    {
+      "keyword": "VERSEMENT ESPECE",
+      "account": "580000",
+      "label": "Internal Transfer Cash"
+    },
+    {
+      "keyword": "FIABILO",
+      "account": "411000",
+      "label": "Client FIABILO"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "doc_type": "VENTE",
+  "default_journal": "VT",
+  "cash_journal": "CA",
+  "column_mapping": {
+    "Reference":      "ref",
+    "Date":           "date",
+    "Client":         "client_name",
+    "Operation":      "op_type",
+    "Site":           "site",
+    "TTC":            "ttc",
+    "HT":             "ht_brut",
+    "Remise":         "remise",
+    "NetHT":          "net_ht_raw",
+    "Fodec":          "fodec",
+    "Tot. Net. HT":   "net_ht",
+    "TVA %":          "tva_rate",
+    "Montant TVA":    "tva_amt"
+  },
+  "numeric_fields": ["ttc", "ht_brut", "remise", "net_ht_raw", "fodec", "net_ht", "tva_amt"],
+  "percentage_fields": ["tva_rate"],
+  "rounding_precision": 0.001,
+  "rounding_account": "471000"
+}

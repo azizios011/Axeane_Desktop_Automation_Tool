@@ -1,0 +1,55 @@
+{
+  "accounting_logic": {
+    "is_avoir_trigger": "avoir",
+    "timbre_fiscal": {
+      "default_amount": 1.000,
+      "account": "437000",
+      "label": "TIMBRE FISCAL"
+    },
+    "tax_logic": {
+      "rates": [
+        { "rate": 19, "ht_account": "707019", "tva_account": "436719" },
+        { "rate": 7,  "ht_account": "707007", "tva_account": "436707" },
+        { "rate": 13, "ht_account": "707013", "tva_account": "436713" }
+      ]
+    },
+    "entry_sequence": [
+      {
+        "step": "client_total",
+        "account_source": "formats.compte_client",
+        "amount": "ttc",
+        "side": "debit",
+        "reverse_on_avoir": true
+      },
+      {
+        "step": "tax_split",
+        "account_source": "rules.tax_logic",
+        "amount": "tva_amt",
+        "side": "credit",
+        "reverse_on_avoir": true
+      },
+      {
+        "step": "revenue_split",
+        "account_source": "rules.tax_logic",
+        "amount": "net_ht",
+        "side": "credit",
+        "reverse_on_avoir": true
+      },
+      {
+        "step": "timbre",
+        "condition": "formats.use_timbre == true",
+        "account": "rules.timbre_fiscal.account",
+        "amount": "rules.timbre_fiscal.default_amount",
+        "side": "credit"
+      },
+      {
+        "step": "cash_reroute",
+        "condition": "formats.use_cash == true",
+        "actions": [
+          { "account": "formats.compte_client", "side": "credit", "amount": "ttc" },
+          { "account": "formats.compte_caisse",  "side": "debit",  "amount": "ttc" }
+        ]
+      }
+    ]
+  }
+}

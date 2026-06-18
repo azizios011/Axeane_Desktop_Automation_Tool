@@ -1,0 +1,20 @@
+{
+  "doc_type": "BANK",
+  "default_journal": "BQ",
+  "cash_journal": "CA",
+  "column_mapping": {
+    "Date":       "date",
+    "Label":      "label",
+    "Amount":     "amount",
+    "Debit":      "debit",
+    "Credit":     "credit",
+    "Reference":  "ref",
+    "Value Date": "value_date"
+  },
+  "numeric_fields": ["amount", "debit", "credit"],
+  "amount_logic": {
+    "mode": "signed_or_split",
+    "description": "If 'amount' column exists, use it (positive=credit/in, negative=debit/out). Otherwise compute from debit/credit columns."
+  },
+  "rounding_precision": 0.001
+}
