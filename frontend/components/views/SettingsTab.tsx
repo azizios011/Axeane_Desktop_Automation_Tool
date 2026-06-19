@@ -1,45 +1,36 @@
-// components/views/RulesManagementView.tsx
 "use client";
 
 import React from 'react';
 import { 
-  Router, Key, ListChecks, Plus, Code, Trash2, 
-  Save, Play, Hash, Landmark, Receipt, Coins, 
-  ChevronRight, Sparkles 
+  UserRoundCog, EyeOff, Eye, ChevronRight, Plus, 
+  Hash, Landmark, Receipt, Coins, Save, Settings, Key
 } from 'lucide-react';
-import { useRulesModule } from '@/modules/useSettingsModule';
-import { ENTRY_STEPS, DEFAULT_TVA_RATES } from '@/metadata/rulesDefinitions';
+import { useSettingsModule } from '@/modules/useSettingsModule';
+import { ENTERPRISE_OPTIONS, EXERCICE_OPTIONS } from '@/metadata/cdpDefaults';
 
 export function SettingsTab() {
   const { 
-    profiles, selectedProfile, setSelectedProfileId, 
-    updateProfile, addProfile, isTesting, setIsTesting 
-  } = useRulesModule();
+    config, updateField, showPassword, setShowPassword,
+    profiles, selectedProfile, setSelectedProfileId, updateProfile, addProfile,
+    handleSave 
+  } = useSettingsModule();
 
   return (
-    <main className="ml-[var(--spacing-sidebar-width)] flex-1 flex flex-col h-full bg-background overflow-hidden">
-      <header className="h-16 border-b border-outline-variant flex items-center justify-between px-6 bg-surface shrink-0">
+    <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
+      <header className="h-16 border-b border-outline-variant bg-surface px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 text-primary rounded-lg">
-            <Router size={20} />
-          </div>
-          <h2 className="text-xl font-bold">Accounting Logic & Rules</h2>
+          <Settings className="text-primary" size={20} />
+          <h1 className="text-xl font-bold text-on-surface">Settings & Profiles</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setIsTesting(!isTesting)}
-            className={`px-4 py-2 border rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${isTesting ? 'bg-primary text-white border-primary' : 'border-outline-variant hover:bg-surface-container'}`}
-          >
-            <Play size={16} /> {isTesting ? 'Logic Test Active' : 'Test Logic'}
-          </button>
-          <button className="px-6 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:opacity-90 flex items-center gap-2 shadow-lg shadow-primary/20">
-            <Save size={16} /> Deploy Rules
-          </button>
-        </div>
+        <button 
+          onClick={handleSave}
+          className="bg-primary text-white text-xs font-bold px-6 py-2.5 rounded-xl hover:opacity-90 flex items-center gap-2 shadow-lg shadow-primary/20 transition-all"
+        >
+          <Save size={16}/> Save Configuration
+        </button>
       </header>
 
-      <div className="flex-1 flex overflow-hidden bg-surface-container-low">
-        {/* Left: Client Profile List (AccountManager Logic) */}
+      <div className="flex-1 flex overflow-hidden">
         <div className="w-80 border-r border-outline-variant bg-surface flex flex-col shrink-0 shadow-sm">
           <div className="p-4 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
             <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Client Profiles</span>
@@ -49,7 +40,7 @@ export function SettingsTab() {
           </div>
           
           <div className="p-3 overflow-y-auto flex-1 space-y-2">
-            {profiles.map((profile) => (
+            {profiles.map((profile: any) => (
               <div 
                 key={profile.id}
                 onClick={() => setSelectedProfileId(profile.id)}
@@ -59,18 +50,13 @@ export function SettingsTab() {
                     : 'border-transparent hover:border-outline-variant bg-surface'
                 }`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${profile.type === 'specific' ? 'bg-green-500' : 'bg-orange-500'}`} />
-                    <h3 className="text-xs font-bold truncate max-w-[140px]">{profile.match}</h3>
-                  </div>
-                  <ChevronRight size={14} className={`transition-transform ${selectedProfile?.id === profile.id ? 'translate-x-1 text-primary' : 'text-on-surface-variant'}`} />
+                <div className="flex justify-between items-start mb-1">
+                  <h3 className="text-xs font-bold truncate max-w-[140px]">{profile.match}</h3>
+                  <ChevronRight size={14} className={selectedProfile?.id === profile.id ? 'text-primary' : 'text-on-surface-variant'} />
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 text-[10px] font-mono text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded">
-                    <Hash size={10} /> {profile.compte_client}
-                  </div>
-                  <div className="flex gap-1">
+                <div className="flex items-center gap-2 text-[10px] font-mono text-on-surface-variant">
+                  <Hash size={10} /> {profile.compte_client}
+                  <div className="flex gap-1 ml-auto">
                     {profile.use_cash && <Coins size={12} className="text-green-600" />}
                     {profile.use_timbre && <Receipt size={12} className="text-blue-600" />}
                   </div>
@@ -80,107 +66,124 @@ export function SettingsTab() {
           </div>
         </div>
 
-        {/* Right: Rule Editor (RulesEngine Logic) */}
-        <div className="flex-1 overflow-y-auto p-8">
-          {selectedProfile ? (
-            <div className="max-w-3xl mx-auto space-y-6">
-              {/* Part 1: Matching String */}
-              <div className="bg-surface rounded-2xl border border-outline-variant shadow-sm p-6 space-y-4">
-                <div className="flex items-center gap-2 text-primary font-bold text-sm">
-                  <Key size={18} /> Profile Identification
+        <div className="flex-1 overflow-y-auto p-8 bg-surface-container-low space-y-8">
+          <section className="max-w-3xl mx-auto space-y-6">
+            <div className="bg-surface rounded-2xl border border-outline-variant p-6 shadow-sm">
+              <h3 className="text-sm font-black uppercase tracking-widest text-primary mb-6 flex items-center gap-2">
+                <UserRoundCog size={18} /> Axeane Authentication
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Username</label>
+                  <input 
+                    type="text" 
+                    value={config.auth.username}
+                    onChange={(e) => updateField('auth', 'username', e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2 text-sm outline-none focus:border-primary" 
+                  />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant">Substring Match Key (Case Insensitive)</label>
+                
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Password</label>
                   <div className="relative">
-                    <Code className="absolute left-4 top-3 text-on-surface-variant" size={18} />
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      value={config.auth.password}
+                      onChange={(e) => updateField('auth', 'password', e.target.value)}
+                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2 text-sm outline-none focus:border-primary" 
+                    />
+                    <button 
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-2 text-on-surface-variant hover:text-primary"
+                    >
+                      {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Enterprise</label>
+                  <select 
+                    value={config.auth.enterprise}
+                    onChange={(e) => updateField('auth', 'enterprise', e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-2 text-sm outline-none appearance-none"
+                  >
+                    {ENTERPRISE_OPTIONS.map(opt => <option key={opt}>{opt}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Exercice</label>
+                  <select 
+                    value={config.auth.exercice}
+                    onChange={(e) => updateField('auth', 'exercice', e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-2 text-sm outline-none appearance-none"
+                  >
+                    {EXERCICE_OPTIONS.map(opt => <option key={opt}>{opt}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {selectedProfile && (
+              <div className="bg-surface rounded-2xl border border-outline-variant p-6 shadow-sm space-y-6">
+                <h3 className="text-sm font-black uppercase tracking-widest text-secondary flex items-center gap-2">
+                  <Key size={18} /> Profile Logic: {selectedProfile.match}
+                </h3>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Match Substring</label>
                     <input 
                       type="text" 
                       value={selectedProfile.match}
                       onChange={(e) => updateProfile(selectedProfile.id, { match: e.target.value })}
-                      className="w-full pl-12 pr-4 py-3 border border-outline-variant rounded-xl font-mono text-sm bg-surface-container-lowest outline-none focus:border-primary transition-all" 
+                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2 text-sm font-mono" 
                     />
                   </div>
-                  <p className="text-[10px] text-on-surface-variant italic">Matches if this text appears in the CSV &quot;Client&quot; column.</p>
-                </div>
-              </div>
 
-              {/* Part 2: Journal Settings */}
-              <div className="grid grid-cols-2 gap-6">
-                <div className="bg-surface rounded-2xl border border-outline-variant shadow-sm p-6 space-y-4">
-                  <div className="flex items-center gap-2 text-secondary font-bold text-sm">
-                    <Landmark size={18} /> Main Account
-                  </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-on-surface-variant">CLIENT LEDGER</label>
+                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Ledger Account</label>
                     <input 
                       type="text" 
                       value={selectedProfile.compte_client}
                       onChange={(e) => updateProfile(selectedProfile.id, { compte_client: e.target.value })}
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-mono" 
+                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2 text-sm font-mono" 
                     />
                   </div>
                 </div>
 
-                <div className="bg-surface rounded-2xl border border-outline-variant shadow-sm p-6 space-y-4">
-                  <div className="flex items-center gap-2 text-secondary font-bold text-sm">
-                    <Sparkles size={18} /> Automated Flags
-                  </div>
-                  <div className="space-y-3">
-                    <label className="flex items-center justify-between cursor-pointer group">
-                      <span className="text-xs font-medium group-hover:text-primary transition-colors">Apply Timbre Fiscal</span>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedProfile.use_timbre}
-                        onChange={(e) => updateProfile(selectedProfile.id, { use_timbre: e.target.checked })}
-                        className="w-5 h-5 accent-primary" 
-                      />
-                    </label>
-                    <label className="flex items-center justify-between cursor-pointer group">
-                      <span className="text-xs font-medium group-hover:text-primary transition-colors">Reroute to Caisse (Cash)</span>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedProfile.use_cash}
-                        onChange={(e) => updateProfile(selectedProfile.id, { use_cash: e.target.checked })}
-                        className="w-5 h-5 accent-primary" 
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="flex items-center justify-between p-3 rounded-xl border border-outline-variant bg-surface-container-low cursor-pointer hover:bg-surface-container">
+                    <div className="flex items-center gap-2">
+                      <Receipt size={16} className="text-primary" />
+                      <span className="text-xs font-bold">Use Timbre Fiscal</span>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedProfile.use_timbre}
+                      onChange={(e) => updateProfile(selectedProfile.id, { use_timbre: e.target.checked })}
+                      className="w-5 h-5 accent-primary" 
+                    />
+                  </label>
 
-              {/* Part 3: Step Visualizer (Mimics entry_sequence) */}
-              <div className="bg-surface rounded-2xl border border-outline-variant shadow-sm p-6 space-y-4">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <ListChecks size={18} className="text-primary" /> Generated Entry Sequence
-                </h3>
-                <div className="space-y-2">
-                  {ENTRY_STEPS.map((step, idx) => {
-                    // Logic check to gray out steps that aren't active
-                    const isActive = step.id === 'cash_reroute' ? selectedProfile.use_cash : 
-                                   step.id === 'timbre' ? selectedProfile.use_timbre : true;
-                    
-                    return (
-                      <div key={step.id} className={`flex items-center gap-4 p-3 rounded-xl border ${isActive ? 'bg-surface border-outline-variant' : 'bg-surface-container-low opacity-40 grayscale'}`}>
-                        <div className="w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center text-[10px] font-bold">
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-bold">{step.label}</p>
-                          <p className="text-[10px] text-on-surface-variant">{step.description}</p>
-                        </div>
-                        {isActive && <div className="text-[10px] font-mono font-bold text-primary">AUTO</div>}
-                      </div>
-                    );
-                  })}
+                  <label className="flex items-center justify-between p-3 rounded-xl border border-outline-variant bg-surface-container-low cursor-pointer hover:bg-surface-container">
+                    <div className="flex items-center gap-2">
+                      <Coins size={16} className="text-green-600" />
+                      <span className="text-xs font-bold">Reroute to Cash</span>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedProfile.use_cash}
+                      onChange={(e) => updateProfile(selectedProfile.id, { use_cash: e.target.checked })}
+                      className="w-5 h-5 accent-primary" 
+                    />
+                  </label>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-on-surface-variant opacity-40">
-              <Router size={64} strokeWidth={1} />
-              <p className="mt-4 font-medium">Select a profile to edit rules</p>
-            </div>
-          )}
+            )}
+          </section>
         </div>
       </div>
     </main>

@@ -1,198 +1,154 @@
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import { 
-  History, HelpCircle, Bell, Filter, MoreVertical, Lock, 
-  ZoomOut, ZoomIn, FileText, CheckCircle2, XCircle, 
-  AlertTriangle, ShieldCheck, Upload, FileUp 
+  Workflow, Cpu, Trash2, CheckCircle2, 
+  Coins, Receipt, Info, Layers, BarChart3 
 } from 'lucide-react';
+import { useReviewModule } from '@/modules/useReviewModule';
+import { CARD_THEMES } from '@/metadata/processSettings';
 
 export function ReviewTab() {
-  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
+  const { 
+    templateCards, isGenerating, summary, 
+    handleGenerateTemplates, handleClear 
+  } = useReviewModule();
 
   return (
-    <main className="ml-[var(--spacing-sidebar-width)] flex-1 flex flex-col h-full bg-background overflow-hidden">
-      {/* View Header */}
-      <header className="flex justify-between items-center px-6 h-16 bg-surface border-b border-outline-variant sticky top-0 z-30 shrink-0">
-        <div className="flex items-center gap-4">
-          <span className="text-xl font-black text-primary uppercase tracking-tighter">Axeane Flow</span>
-          <div className="h-4 w-px bg-outline-variant mx-2" />
-          <span className="text-on-surface-variant text-sm font-medium">Reconciliation Engine</span>
+    <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
+      <header className="h-16 border-b border-outline-variant bg-surface px-6 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <Workflow className="text-primary" size={20} />
+          <h1 className="text-xl font-bold text-on-surface">Template Formulas by Client Profile</h1>
         </div>
-        
-        <div className="flex items-center gap-4">
-          <button className="text-on-surface-variant hover:text-primary transition-colors">
-            <History size={20} />
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleClear}
+            className="px-4 py-2 text-xs font-bold text-on-surface-variant hover:text-error flex items-center gap-2 transition-colors"
+          >
+            <Trash2 size={16} /> Clear Templates
           </button>
-          <div className="relative">
-            <Bell className="text-on-surface-variant cursor-pointer" size={20} />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full border-2 border-surface"></span>
-          </div>
-          <div className="h-6 w-px bg-outline-variant mx-2" />
-          <button className="bg-surface border border-outline-variant text-on-surface hover:bg-surface-container-low text-xs font-bold py-1.5 px-4 rounded transition-all shadow-sm">
-            Sync Axeane GL
+          <button 
+            onClick={handleGenerateTemplates}
+            disabled={isGenerating}
+            className="bg-primary text-white text-xs font-bold px-6 py-2.5 rounded-xl hover:opacity-90 flex items-center gap-2 shadow-lg shadow-primary/20 transition-all disabled:opacity-50"
+          >
+            <Cpu size={16}/> {isGenerating ? 'Generating...' : 'Generate Template Cards'}
           </button>
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden">
-        {/* Toolbar Controls */}
-        <div className="bg-surface border border-outline-variant rounded-lg p-3 px-4 flex items-center justify-between shrink-0 shadow-sm">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Target Account</label>
-              <div className="relative">
-                <input 
-                  type="text" 
-                  value="707019" 
-                  readOnly 
-                  className="w-28 bg-surface-container-low border border-outline-variant text-on-surface font-mono text-sm py-1 px-3 rounded outline-none" 
-                />
-                <Lock className="absolute right-2 top-1.5 text-on-surface-variant" size={14} />
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Validation Type</label>
-              <select className="bg-surface-container-low border border-outline-variant text-xs font-bold py-1 px-3 rounded appearance-none outline-none cursor-pointer pr-8">
-                <option>GL vs. Automation Data</option>
-                <option>GL vs. Bank Statement</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <div className="relative">
-              <button 
-                onClick={() => setIsImportMenuOpen(!isImportMenuOpen)}
-                className="flex items-center gap-1.5 bg-primary/10 text-primary hover:bg-primary/20 px-3 py-1.5 rounded transition-colors text-xs font-bold"
-              >
-                <Upload size={16} /> Import Files
-              </button>
-              
-              {isImportMenuOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-surface border border-outline-variant rounded-lg shadow-xl overflow-hidden z-50">
-                  <button className="w-full text-left px-4 py-2.5 text-xs text-on-surface hover:bg-surface-container-low flex items-center gap-2 border-b border-outline-variant/30">
-                    <FileUp size={14} className="text-on-surface-variant" /> Import Data PDF
-                  </button>
-                  <button className="w-full text-left px-4 py-2.5 text-xs text-on-surface hover:bg-surface-container-low flex items-center gap-2">
-                    <FileUp size={14} className="text-on-surface-variant" /> Import GL PDF
-                  </button>
-                </div>
-              )}
-            </div>
-            <button className="p-1.5 text-on-surface-variant hover:bg-surface-container rounded transition-colors">
-              <MoreVertical size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Main Comparison Area */}
-        <div className="flex-1 flex gap-4 overflow-hidden h-full">
+      <div className="flex-1 overflow-y-auto p-8 bg-surface-container-low space-y-6">
+        <div className="max-w-5xl mx-auto space-y-8">
           
-          {/* Left Side: Axeane GL (PDF Source) */}
-          <div className="w-1/2 flex flex-col bg-surface border border-outline-variant rounded-lg overflow-hidden shadow-sm">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-outline-variant bg-surface-container-low shrink-0">
-              <div className="flex items-center gap-2">
-                <FileText className="text-on-surface-variant" size={16} />
-                <span className="text-xs font-bold truncate max-w-[180px]">GL_Export_707019.pdf</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <ZoomOut className="text-on-surface-variant cursor-pointer hover:text-on-surface" size={16} />
-                <span className="text-[10px] font-mono text-on-surface-variant">100%</span>
-                <ZoomIn className="text-on-surface-variant cursor-pointer hover:text-on-surface" size={16} />
-              </div>
-            </div>
-            
-            <div className="flex-1 bg-surface-container-highest overflow-auto">
-              <table className="w-full text-left border-collapse bg-surface text-[11px]">
-                <thead className="sticky top-0 bg-surface-container-low border-b border-outline-variant z-10 shadow-sm">
-                  <tr>
-                    <th className="py-2 px-4 font-bold text-on-surface-variant uppercase">Date</th>
-                    <th className="py-2 px-4 font-bold text-on-surface-variant uppercase">Description</th>
-                    <th className="py-2 px-4 font-bold text-on-surface-variant uppercase text-right">Credit</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/30">
-                  <tr className="hover:bg-primary/5 transition-colors">
-                    <td className="p-3 font-mono">01/10/2023</td>
-                    <td className="p-3">FAC-2023-001 (Client A)</td>
-                    <td className="p-3 font-mono text-right">12,500.000</td>
-                  </tr>
-                  <tr className="hover:bg-primary/5 transition-colors">
-                    <td className="p-3 font-mono">05/10/2023</td>
-                    <td className="p-3">FAC-2023-002 (Client B)</td>
-                    <td className="p-3 font-mono text-right text-error font-bold">1,200.000</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Right Side: Reconciled Data Table */}
-          <div className="w-1/2 flex flex-col gap-4 overflow-hidden">
-            <div className="flex-1 bg-surface border border-outline-variant rounded-lg overflow-hidden shadow-sm flex flex-col">
-              <div className="overflow-y-auto flex-1">
-                <table className="w-full text-left border-collapse text-[11px]">
-                  <thead className="sticky top-0 bg-surface-container-low border-b border-outline-variant z-10 shadow-sm">
-                    <tr>
-                      <th className="py-2 px-4 font-bold text-on-surface-variant uppercase">Date</th>
-                      <th className="py-2 px-4 font-bold text-on-surface-variant uppercase">Extracted Amount</th>
-                      <th className="py-2 px-4 font-bold text-on-surface-variant uppercase text-center">Match</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant/30 font-mono">
-                    <tr className="hover:bg-surface-container-low transition-colors">
-                      <td className="p-3">01/10/2023</td>
-                      <td className="p-3 text-right">12,500.000</td>
-                      <td className="p-3 text-center">
-                        <div className="inline-flex items-center justify-center bg-green-100 border border-green-200 rounded-full px-2 py-0.5 gap-1">
-                          <CheckCircle2 size={12} className="text-green-600" />
-                          <span className="text-[9px] font-black text-green-700">MATCH</span>
-                        </div>
-                      </td>
-                    </tr>
-                    
-                    <tr className="bg-error/5 hover:bg-error/10 transition-colors">
-                      <td className="p-3">05/10/2023</td>
-                      <td className="p-3 text-right text-error font-bold">1,195.000</td>
-                      <td className="p-3 text-center">
-                        <div className="inline-flex items-center justify-center bg-error-container border border-error/50 rounded-full px-2 py-0.5 gap-1">
-                          <AlertTriangle size={12} className="text-error" />
-                          <span className="text-[9px] font-black text-on-error-container uppercase">Diff</span>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Reconciliation Footer Summary */}
-            <div className="bg-surface border border-outline-variant rounded-lg p-4 flex items-center justify-between shadow-sm shrink-0">
-              <div>
-                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Live Status</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                  <span className="text-xs font-bold">Automated Reconciler Running</span>
-                </div>
-              </div>
-              
+          {/* Summary Banner (Python Summary Panel) */}
+          {summary && (
+            <div className="bg-surface border border-outline-variant rounded-2xl p-6 shadow-sm flex items-center justify-between">
               <div className="flex items-center gap-6">
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] text-on-surface-variant uppercase font-bold">Items Matched</span>
-                  <span className="text-sm font-mono font-black">124 / 125</span>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Profiles Detected</span>
+                  <span className="text-xl font-black text-primary">{summary.total_profiles} Profiles</span>
                 </div>
-                <div className="h-8 w-px bg-outline-variant"></div>
-                <div className="bg-tertiary-fixed border border-outline-variant rounded-lg px-5 py-2 flex items-center gap-4">
-                  <ShieldCheck size={20} className="text-on-tertiary-fixed" />
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-on-tertiary-fixed uppercase opacity-80">Total Variance</span>
-                    <span className="font-mono text-md font-black text-on-tertiary-fixed">5.000 TND</span>
-                  </div>
+                <div className="w-px h-10 bg-outline-variant" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Invoices Covered</span>
+                  <span className="text-xl font-black text-on-surface">{summary.total_invoices} Items</span>
+                </div>
+                <div className="w-px h-10 bg-outline-variant" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Total Batch TTC</span>
+                  <span className="text-xl font-black text-on-surface font-mono">{summary.total_ttc.toFixed(3)} TND</span>
                 </div>
               </div>
+              <CheckCircle2 className="text-green-500" size={32} />
             </div>
+          )}
+
+          {/* Card Grid (Python cards_container) */}
+          <div className="grid grid-cols-1 gap-6">
+            {templateCards.length > 0 ? (
+              templateCards.map((card, idx) => {
+                const theme = CARD_THEMES[card.match_type as keyof typeof CARD_THEMES] || CARD_THEMES.default;
+                return (
+                  <div key={idx} className={`rounded-2xl border-2 overflow-hidden shadow-md flex flex-col ${theme.body} ${theme.border}`}>
+                    {/* Card Header */}
+                    <div className={`${theme.header} p-5 flex justify-between items-center text-white`}>
+                      <div className="flex items-center gap-4">
+                        <div className="w-3 h-3 rounded-full bg-white animate-pulse" />
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-widest opacity-80 block mb-0.5">{card.match_type} match</span>
+                          <h3 className="text-lg font-black">{card.match_key}</h3>
+                        </div>
+                      </div>
+                      <div className={`${theme.badge} border border-white/20 px-4 py-2 rounded-xl text-xs font-black shadow-inner`}>
+                        {card.invoice_count} INVOICES
+                      </div>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                      {/* Stats & Flags */}
+                      <div className="flex items-center gap-8">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black text-on-surface-variant uppercase">Aggregated TTC</span>
+                          <span className="text-md font-mono font-black">{card.total_ttc.toFixed(3)} TND</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black text-on-surface-variant uppercase">VAT Rates</span>
+                          <span className="text-md font-mono font-black">{card.tva_rates.join('% + ')}%</span>
+                        </div>
+                        <div className="flex gap-2 ml-auto">
+                          {card.use_cash && (
+                            <div className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase">
+                              <Coins size={12} /> Cash
+                            </div>
+                          )}
+                          {card.use_timbre && (
+                            <div className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase">
+                              <Receipt size={12} /> Timbre
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Formula Table (Python Formula lines section) */}
+                      <div className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+                        <table className="w-full text-left border-collapse text-[11px] font-mono">
+                          <thead className="bg-surface-container-high text-on-surface-variant">
+                            <tr>
+                              <th className="p-3 border-b border-outline-variant font-black uppercase">Step</th>
+                              <th className="p-3 border-b border-outline-variant font-black uppercase">Account</th>
+                              <th className="p-3 border-b border-outline-variant font-black uppercase">Label</th>
+                              <th className="p-3 border-b border-outline-variant font-black uppercase text-right">Debit</th>
+                              <th className="p-3 border-b border-outline-variant font-black uppercase text-right">Credit</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/30 text-on-surface">
+                            {card.formula_lines.map((line: any, lIdx: number) => (
+                              <tr key={lIdx} className="hover:bg-primary/5">
+                                <td className="p-3 text-primary font-bold">{line.step}</td>
+                                <td className="p-3 font-black">{line.account}</td>
+                                <td className="p-3">{line.label}</td>
+                                <td className="p-3 text-right text-error font-bold">
+                                  {line.debit > 0 ? line.debit.toFixed(3) : ''}
+                                </td>
+                                <td className="p-3 text-right text-green-700 font-bold">
+                                  {line.credit > 0 ? line.credit.toFixed(3) : ''}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-outline-variant rounded-3xl opacity-30">
+                <Layers size={48} strokeWidth={1} />
+                <p className="mt-4 font-black uppercase tracking-widest text-xs">Waiting for formula generation</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

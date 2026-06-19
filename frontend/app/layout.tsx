@@ -1,17 +1,16 @@
-
+// app/layout.tsx
 import "./globals.css";
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html
-      lang="en"
-      className={``}
-    >
-      <body className="">{children}</body>
+    <html lang="en">
+      <body className="antialiased">
+        {children}
+      </body>
     </html>
   );
 }

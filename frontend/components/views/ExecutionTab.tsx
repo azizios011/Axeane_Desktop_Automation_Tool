@@ -1,157 +1,134 @@
-// components/views/ProcessView.tsx
 "use client";
 
 import React from 'react';
-import { Play, Square, RefreshCw, Terminal, Cpu, CheckCircle2, AlertTriangle, Boxes } from 'lucide-react';
-import { useProcessModule } from '@/modules/useProcessModule';
-import { CARD_THEMES, LOG_COLORS } from '@/metadata/processSettings';
+import { 
+  Play, Square, Terminal, Trash2, 
+  CheckCircle2, AlertCircle, Loader2, Gauge 
+} from 'lucide-react';
+import { useExecutionModule } from '@/modules/useExecutionModule';
+import { LOG_LEVEL_COLORS } from '@/metadata/executionSettings';
 
 export function ExecutionTab() {
   const { 
-    cards, handleGenerateTemplates, 
-    isExecuting, handleStartAutomation, handleStop,
-    logs, progress, scrollRef 
-  } = useProcessModule();
+    isRunning, progress, logs, terminalRef, 
+    startAutomation, stopAutomation, clearLogs 
+  } = useExecutionModule();
 
   return (
-    <main className="ml-[var(--spacing-sidebar-width)] flex-1 flex flex-col h-full bg-background overflow-hidden">
-      <header className="bg-surface flex justify-between items-center px-6 h-16 border-b border-outline-variant shrink-0">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-bold">2. Rule Engine & Execution</h2>
-          {cards.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full">
-              <Boxes size={14} className="text-primary" />
-              <span className="text-[10px] font-black text-primary uppercase">{cards.length} Profiles Generated</span>
-            </div>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-3">
-          {cards.length === 0 ? (
-            <button onClick={handleGenerateTemplates} className="bg-primary text-white text-xs font-bold px-6 py-2 rounded-lg hover:opacity-90 transition-all shadow-md flex items-center gap-2">
-              <Cpu size={16} /> Generate Formula Cards
+    <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
+      {/* Header / Top Control Bar */}
+      <header className="h-20 border-b border-outline-variant bg-surface px-6 flex items-center justify-between shrink-0 shadow-sm z-10">
+        <div className="flex items-center gap-6">
+          <div className="flex gap-2">
+            <button 
+              disabled={isRunning}
+              onClick={startAutomation}
+              className="bg-green-600 text-white text-xs font-black px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 shadow-lg shadow-green-900/20 transition-all"
+            >
+              <Play size={18} /> START AUTOMATION
             </button>
-          ) : (
-            <div className="flex gap-2">
-              <button 
-                disabled={isExecuting}
-                onClick={handleStartAutomation}
-                className="bg-green-600 text-white text-xs font-bold px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 shadow-md"
-              >
-                <Play size={16} /> Start Automation
-              </button>
-              <button 
-                disabled={!isExecuting}
-                onClick={handleStop}
-                className="bg-error text-white text-xs font-bold px-6 py-2 rounded-lg flex items-center gap-2 hover:opacity-90 disabled:opacity-50 shadow-md"
-              >
-                <Square size={16} /> Stop
-              </button>
+            <button 
+              disabled={!isRunning}
+              onClick={stopAutomation}
+              className="bg-error text-white text-xs font-black px-6 py-3 rounded-xl flex items-center gap-2 hover:opacity-90 disabled:opacity-50 shadow-lg shadow-red-900/20 transition-all"
+            >
+              <Square size={18} /> STOP
+            </button>
+          </div>
+
+          <div className="h-10 w-px bg-outline-variant" />
+
+          {/* Statistics Display */}
+          <div className="flex items-center gap-8">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Progress</span>
+              <span className="text-md font-black font-mono text-primary">{progress.current} / {progress.total}</span>
             </div>
-          )}
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest text-green-600">Success</span>
+              <span className="text-md font-black font-mono text-green-600">{progress.success}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest text-error">Failed</span>
+              <span className="text-md font-black font-mono text-error">{progress.failed}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Big Percentage Display */}
+        <div className="flex flex-col items-end">
+          <span className="text-[10px] font-black text-on-surface-variant uppercase">Automation Load</span>
+          <span className="text-2xl font-black text-primary font-mono">{progress.percent}%</span>
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden flex flex-col p-6 gap-6 bg-surface-container-low">
+      <div className="flex-1 flex flex-col p-6 gap-6 bg-surface-container-low overflow-hidden">
         
-        {/* Progress & Stats (Only visible when executing) */}
-        {isExecuting && (
-          <div className="bg-surface border border-outline-variant rounded-2xl p-5 flex flex-col gap-3 shadow-sm shrink-0 animate-in fade-in slide-in-from-top-2">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <RefreshCw className="animate-spin text-primary" size={20} />
-                <span className="text-sm font-bold text-on-surface">Processing Invoices: {progress.current} / {progress.total}</span>
-              </div>
-              <span className="font-mono text-xs font-black text-primary">{progress.percent}%</span>
-            </div>
-            <div className="w-full h-3 bg-surface-container-highest rounded-full overflow-hidden border border-outline-variant/20">
-              <div className="h-full bg-primary transition-all duration-500 ease-out" style={{ width: `${progress.percent}%` }}></div>
+        {/* Modern Progress Bar (Determinate) */}
+        <div className="bg-surface border border-outline-variant rounded-2xl p-2 shadow-sm shrink-0">
+          <div className="w-full h-4 bg-surface-container-highest rounded-xl overflow-hidden relative border border-outline-variant/30">
+            <div 
+              className="h-full bg-primary transition-all duration-500 ease-out flex items-center justify-center relative overflow-hidden" 
+              style={{ width: `${progress.percent}%` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent animate-pulse" />
             </div>
           </div>
-        )}
-
-        {/* Formula Cards Grid (The Python review_and_rules equivalent) */}
-        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-4 pb-4">
-          {cards.map((card, idx) => {
-            const theme = CARD_THEMES[card.match_type as keyof typeof CARD_THEMES] || CARD_THEMES.default;
-            return (
-              <div key={idx} className={`rounded-2xl border border-outline-variant/50 overflow-hidden shadow-sm flex flex-col ${theme.body}`}>
-                <div className={`${theme.header} p-4 flex justify-between items-center text-white`}>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-black bg-white/20 px-2 py-0.5 rounded uppercase tracking-widest">{card.match_type}</span>
-                    <h3 className="font-bold text-md">{card.match_key}</h3>
-                  </div>
-                  <span className={`${theme.badge} px-3 py-1 rounded-lg text-xs font-bold border border-white/20`}>
-                    {card.invoice_count} Invoices
-                  </span>
-                </div>
-                
-                <div className="p-4 space-y-4 flex-1">
-                  <div className="flex items-center gap-6">
-                    <div>
-                      <p className="text-[9px] font-bold uppercase opacity-60">Total TTC</p>
-                      <p className="text-sm font-black font-mono">{card.total_ttc.toFixed(3)} TND</p>
-                    </div>
-                    <div className="h-8 w-px bg-outline-variant/30" />
-                    <div className="flex gap-2">
-                      {card.use_cash && <span className="bg-green-200 text-green-800 text-[9px] font-bold px-2 py-0.5 rounded">CASH</span>}
-                      {card.use_timbre && <span className="bg-blue-200 text-blue-800 text-[9px] font-bold px-2 py-0.5 rounded">TIMBRE</span>}
-                    </div>
-                  </div>
-
-                  <div className="bg-white/50 rounded-xl border border-outline-variant/30 overflow-hidden">
-                    <table className="w-full text-[10px] font-mono">
-                      <thead className="bg-black/5 border-b border-outline-variant/20">
-                        <tr>
-                          <th className="p-2 text-left">Account</th>
-                          <th className="p-2 text-left">Label</th>
-                          <th className="p-2 text-right">Debit</th>
-                          <th className="p-2 text-right">Credit</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-outline-variant/10">
-                        {card.formula_lines.map((line: any, lIdx: number) => (
-                          <tr key={lIdx}>
-                            <td className="p-2 font-bold">{line.account}</td>
-                            <td className="p-2 truncate max-w-[100px]">{line.label}</td>
-                            <td className="p-2 text-right text-error">{line.debit > 0 ? line.debit.toFixed(3) : ''}</td>
-                            <td className="p-2 text-right text-primary">{line.credit > 0 ? line.credit.toFixed(3) : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
         </div>
 
-        {/* Live Execution Terminal (The Python Execution_Tab equivalent) */}
-        <div className="h-64 bg-[#121212] rounded-2xl border border-outline-variant shadow-2xl overflow-hidden flex flex-col shrink-0">
-          <div className="bg-[#1e1e1e] px-5 py-2.5 border-b border-[#333] flex justify-between items-center">
-            <div className="flex items-center gap-3 text-[#aaa] text-xs font-bold uppercase tracking-widest">
-              <Terminal size={16} className="text-primary" /> 
-              Execution Console
+        {/* Live Terminal (Python ScrolledText Equivalent) */}
+        <div className="flex-1 bg-[#1e1e1e] rounded-2xl border-4 border-surface shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-[#2d2d2d] px-5 py-3 border-b border-[#404040] flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-3">
+              <Terminal size={18} className="text-primary" />
+              <span className="text-xs font-black text-[#d4d4d4] uppercase tracking-widest">Execution Logs & Network Debug</span>
             </div>
+            <button 
+              onClick={clearLogs}
+              className="p-1.5 hover:bg-white/10 rounded-lg text-[#888] hover:text-white transition-all"
+            >
+              <Trash2 size={16} />
+            </button>
           </div>
+
           <div 
-            ref={scrollRef}
-            className="p-4 overflow-y-auto font-mono text-[11px] leading-relaxed flex flex-col gap-1.5"
+            ref={terminalRef}
+            className="flex-1 p-5 overflow-y-auto font-mono text-xs leading-relaxed selection:bg-primary/30"
           >
             {logs.length === 0 ? (
-              <div className="text-gray-600 italic">Waiting for process initiation...</div>
+              <div className="text-[#666] flex flex-col items-center justify-center h-full gap-4 opacity-50">
+                <Gauge size={48} strokeWidth={1} />
+                <p className="font-bold uppercase tracking-[0.2em]">Ready for initialization</p>
+              </div>
             ) : (
-              logs.map((log, i) => (
-                <div key={i} className="flex gap-3">
-                  <span className="text-gray-500 shrink-0 select-none">[{i+1}]</span>
-                  <span className={LOG_COLORS[log.level as keyof typeof LOG_COLORS] || LOG_COLORS.DEFAULT}>
-                    {log.msg}
-                  </span>
-                </div>
-              ))
+              <div className="space-y-1">
+                {logs.map((log) => (
+                  <div key={log.id} className="flex gap-4 group">
+                    <span className="text-[#666] shrink-0 font-bold w-16">[{log.timestamp}]</span>
+                    <span className={`font-bold shrink-0 w-20 ${LOG_LEVEL_COLORS[log.level]}`}>
+                      [{log.level}]
+                    </span>
+                    <span className="text-[#d4d4d4]">{log.message}</span>
+                  </div>
+                ))}
+                {isRunning && (
+                  <div className="flex items-center gap-2 text-primary mt-2">
+                    <Loader2 size={12} className="animate-spin" />
+                    <span className="animate-pulse">_</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
+        </div>
+
+        {/* Summary Footer */}
+        <div className="bg-surface border border-outline-variant rounded-xl p-4 flex items-center justify-between text-[11px] font-bold text-on-surface-variant uppercase tracking-widest shadow-sm">
+          <div className="flex gap-6">
+            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-green-600"/> Thread Safe Engine</span>
+            <span className="flex items-center gap-2"><AlertCircle size={14} className="text-blue-600"/> Playwright Async Context</span>
+          </div>
+          <span>Active Session: {isRunning ? 'Processing...' : 'Idle'}</span>
         </div>
       </div>
     </main>

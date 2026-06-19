@@ -1,8 +1,10 @@
-// components/views/ImportView.tsx
 "use client";
 
 import React from 'react';
-import { CloudUpload, ChevronDown, FileText, ArrowRight, Table as TableIcon, Loader2 } from 'lucide-react';
+import { 
+  Upload, FileUp, Landmark, Settings, 
+  Table as TableIcon, ArrowRight, Search, Loader2 
+} from 'lucide-react';
 import { useImportModule } from '@/modules/useImportModule';
 import { DOCUMENT_TYPES } from '@/metadata/importSettings';
 
@@ -10,113 +12,116 @@ export function ImportTab() {
   const { 
     docType, setDocType, 
     filePath, handleBrowse, 
-    isParsing, handleProcess,
-    previewData 
+    isParsing, handleStartParsing,
+    status, rawData, csvHeaders
   } = useImportModule();
 
   return (
-    <main className="ml-[var(--spacing-sidebar-width)] flex-1 flex flex-col h-full bg-background overflow-hidden">
-      <header className="h-16 border-b border-outline-variant flex items-center justify-between px-6 bg-surface shrink-0">
-        <h2 className="text-xl font-bold">1. Data Ingestion</h2>
-        <div className="flex items-center gap-2">
-          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${isParsing ? 'bg-primary/10 text-primary animate-pulse' : 'bg-secondary-container text-on-secondary-container'}`}>
-            {isParsing ? 'Engine Parsing...' : 'Ready'}
-          </span>
+    <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
+      <header className="h-16 border-b border-outline-variant bg-surface px-6 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <Upload className="text-primary" size={20} />
+          <h1 className="text-xl font-bold text-on-surface">1. Import & Map Raw Data</h1>
         </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Control Panel */}
-        <div className="w-[380px] flex flex-col border-r border-outline-variant bg-surface overflow-y-auto p-6 space-y-8 shadow-sm">
+        {/* Left Side: Controls (Python _build_ui top section) */}
+        <div className="w-[400px] border-r border-outline-variant bg-surface flex flex-col shrink-0 p-6 space-y-8">
           
-          {/* Document Type Selection */}
+          {/* File Selection */}
           <div className="space-y-3">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Document Type</label>
-            <div className="grid grid-cols-1 gap-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Data Source</label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                readOnly
+                value={filePath}
+                placeholder="No file selected..."
+                className="flex-1 bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2 text-xs font-mono outline-none" 
+              />
+              <button 
+                onClick={handleBrowse}
+                className="bg-surface-container-high border border-outline-variant px-4 py-2 rounded-xl text-xs font-bold hover:bg-surface-variant transition-colors"
+              >
+                Browse
+              </button>
+            </div>
+          </div>
+
+          {/* Doc Type Toggle (Python Radiobuttons) */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Document Category</label>
+            <div className="grid grid-cols-2 gap-3">
               {DOCUMENT_TYPES.map((type) => (
                 <button
                   key={type.id}
                   onClick={() => setDocType(type.id as any)}
-                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                  className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                     docType === type.id 
                       ? 'border-primary bg-primary/5 ring-1 ring-primary' 
-                      : 'border-outline-variant hover:border-outline bg-surface'
+                      : 'border-outline-variant bg-surface hover:bg-surface-container-low'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${docType === type.id ? 'bg-primary text-white' : 'bg-surface-container-high text-on-surface-variant'}`}>
-                      <FileText size={18} />
-                    </div>
-                    <span className="text-sm font-semibold">{type.label}</span>
-                  </div>
-                  {docType === type.id && <div className="w-2 h-2 rounded-full bg-primary" />}
+                  {type.id === 'Vente' ? <FileUp size={20} /> : <Landmark size={20} />}
+                  <span className="text-xs font-bold">{type.label.split(' ')[0]}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* File Picker */}
-          <div className="space-y-3">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Source File (CSV/Excel)</label>
-            <div 
-              onClick={handleBrowse}
-              className="border-2 border-dashed border-outline-variant rounded-2xl bg-surface-container-low hover:bg-surface-container hover:border-primary/50 p-8 text-center cursor-pointer group transition-all"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform text-primary">
-                <CloudUpload size={24} />
-              </div>
-              <p className="text-sm font-bold text-on-surface">
-                {filePath ? filePath.split(/[\\/]/).pop() : 'Click to select CSV'}
-              </p>
-              <p className="text-[11px] text-on-surface-variant mt-1 italic">
-                {filePath ? 'File linked successfully' : 'Browse system files'}
-              </p>
-            </div>
-          </div>
-
           {/* Action Button */}
-          <button 
-            disabled={!filePath || isParsing}
-            onClick={() => handleProcess(() => console.log("Navigate to ProcessView"))}
-            className="w-full py-4 rounded-xl bg-primary text-white font-bold flex items-center justify-center gap-3 shadow-lg shadow-primary/20 hover:opacity-90 disabled:grayscale disabled:opacity-50 transition-all mt-auto"
-          >
-            {isParsing ? <Loader2 className="animate-spin" /> : <ArrowRight size={18} />}
-            {isParsing ? 'Applying Accounting Rules...' : 'Parse & Generate Formulas'}
-          </button>
+          <div className="pt-4 space-y-4">
+            <button 
+              disabled={!filePath || isParsing}
+              onClick={() => handleStartParsing(() => console.log("Next Tab"))}
+              className="w-full py-4 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg shadow-primary/20 hover:opacity-90 disabled:grayscale transition-all"
+            >
+              {isParsing ? <Loader2 className="animate-spin" size={20} /> : <Settings size={20} />}
+              Parse & Apply Rules
+            </button>
+            
+            <p className={`text-center text-xs font-bold ${status.color}`}>
+              {status.text}
+            </p>
+          </div>
         </div>
 
-        {/* Right Preview Panel (The Treeview Equivalent) */}
+        {/* Right Side: Raw Preview (Python Treeview Equivalent) */}
         <div className="flex-1 bg-surface-container-low flex flex-col overflow-hidden">
-          <div className="h-12 border-b border-outline-variant bg-surface flex items-center px-4 justify-between shrink-0">
+          <div className="h-12 border-b border-outline-variant bg-surface flex items-center px-6 justify-between">
             <div className="flex items-center gap-2 text-on-surface-variant">
               <TableIcon size={16} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Raw Data Preview</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">Raw CSV Preview</span>
             </div>
-            {previewData.length > 0 && (
-              <span className="text-[10px] font-mono bg-secondary-container px-2 py-0.5 rounded text-on-secondary-container">
-                {previewData.length} Rows Detected
-              </span>
-            )}
+            <div className="relative">
+              <Search className="absolute left-3 top-2 text-on-surface-variant" size={14} />
+              <input 
+                type="text" 
+                placeholder="Filter rows..." 
+                className="bg-surface-container-low border border-outline-variant rounded-lg pl-9 pr-3 py-1 text-[11px] outline-none focus:border-primary"
+              />
+            </div>
           </div>
-          
-          <div className="flex-1 overflow-auto bg-surface-container-lowest">
-            {previewData.length > 0 ? (
+
+          <div className="flex-1 overflow-auto bg-surface">
+            {rawData.length > 0 ? (
               <table className="w-full text-left border-collapse min-w-max">
                 <thead className="sticky top-0 bg-surface-container-high z-10">
                   <tr>
-                    {Object.keys(previewData[0]).map((key) => (
-                      <th key={key} className="p-3 text-[10px] font-black uppercase text-on-surface-variant border-b border-outline-variant">
-                        {key}
+                    {csvHeaders.map((header) => (
+                      <th key={header} className="p-3 text-[10px] font-black uppercase text-on-surface-variant border-b border-outline-variant border-r last:border-r-0">
+                        {header}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/30">
-                  {previewData.map((row, idx) => (
+                  {rawData.map((row, idx) => (
                     <tr key={idx} className="hover:bg-primary/5 transition-colors">
-                      {Object.values(row).map((val: any, vIdx) => (
-                        <td key={vIdx} className="p-3 text-xs font-medium text-on-surface border-r border-outline-variant/10">
-                          {typeof val === 'number' ? val.toFixed(3) : String(val)}
+                      {csvHeaders.map((header) => (
+                        <td key={header} className="p-3 text-xs font-medium text-on-surface font-mono border-r border-outline-variant/10 last:border-r-0">
+                          {typeof row[header] === 'number' ? row[header].toFixed(3) : row[header]}
                         </td>
                       ))}
                     </tr>
@@ -124,9 +129,10 @@ export function ImportTab() {
                 </tbody>
               </table>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-on-surface-variant opacity-40">
-                <TableIcon size={48} strokeWidth={1} />
-                <p className="text-sm font-medium mt-4">Waiting for data parsing...</p>
+              <div className="h-full flex flex-col items-center justify-center opacity-30 text-on-surface-variant">
+                <TableIcon size={64} strokeWidth={1} />
+                <p className="mt-4 font-bold text-sm">No data loaded yet</p>
+                <p className="text-xs italic">Select a file and click Parse to preview contents</p>
               </div>
             )}
           </div>

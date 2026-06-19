@@ -1,193 +1,166 @@
-// components/views/CdpSettingsView.tsx
 "use client";
 
 import React from 'react';
 import { 
-  UserRoundCog, EyeOff, Eye, ChevronDown, Network, 
-  Activity, Save, Globe, Folder, Monitor, Cpu 
+  Monitor, Globe, Folder, Cpu, Network, 
+  Activity, Save, Settings2, ShieldCheck, HardDrive 
 } from 'lucide-react';
-import { useCdpModule } from '@/modules/useCdpModule';
-import { BROWSER_TYPES, LAUNCH_MODES, ENTERPRISE_OPTIONS, EXERCICE_OPTIONS } from '@/metadata/cdpDefaults';
+import { usePwaModule } from '@/modules/usePwaModule';
+import { BROWSER_TYPES, LAUNCH_MODES } from '@/metadata/cdpDefaults';
 
 export function PWATab() {
   const { 
-    config, updateField, updateBrowserType, 
-    showPassword, setShowPassword, handleSave 
-  } = useCdpModule();
+    cdpSettings, updateBrowserType, updateField, handleSave 
+  } = usePwaModule();
 
   return (
-    <main className="ml-[var(--spacing-sidebar-width)] flex-1 flex flex-col h-full bg-background overflow-hidden">
+    <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
       <header className="h-16 border-b border-outline-variant bg-surface px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-secondary-container flex items-center justify-center text-on-secondary-container">
-            <Cpu size={18} />
-          </div>
-          <h1 className="text-xl font-bold">System Configuration</h1>
+          <Monitor className="text-primary" size={20} />
+          <h1 className="text-xl font-bold text-on-surface">Browser Engine & CDP Configuration</h1>
         </div>
         <button 
           onClick={handleSave}
           className="bg-primary text-white text-xs font-bold px-6 py-2.5 rounded-xl hover:opacity-90 flex items-center gap-2 shadow-lg shadow-primary/20 transition-all"
         >
-          <Save size={16}/> Save Settings
+          <Save size={16}/> Save Browser Config
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-8 bg-surface-container-low">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="flex-1 overflow-y-auto p-8 bg-surface-container-low space-y-6">
+        <div className="max-w-4xl mx-auto space-y-6">
           
-          {/* Left Column: Authentication & Context (4 Cols) */}
-          <div className="lg:col-span-5 space-y-6">
-            <section className="bg-surface border border-outline-variant rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-black uppercase tracking-widest text-primary mb-6 flex items-center gap-2">
-                <UserRoundCog size={18} /> Axeane Credentials
-              </h3>
-              
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Username</label>
+          {/* Section 1: Browser Engine (Matches Python Engine Selection) */}
+          <section className="bg-surface border border-outline-variant rounded-2xl p-6 shadow-sm space-y-6">
+            <h3 className="text-sm font-black uppercase tracking-widest text-primary flex items-center gap-2">
+              <Cpu size={18} /> 1. Browser Engine & Executable
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Browser Type</label>
+                <select 
+                  value={cdpSettings.browser_type}
+                  onChange={(e) => updateBrowserType(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none appearance-none"
+                >
+                  {BROWSER_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Executable Path</label>
+                <div className="flex gap-2">
                   <input 
                     type="text" 
-                    value={config.auth.username}
-                    onChange={(e) => updateField('auth', 'username', e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" 
+                    value={cdpSettings.executable_path}
+                    onChange={(e) => updateField('executable_path', e.target.value)}
+                    className="flex-1 bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-xs font-mono outline-none focus:border-primary" 
                   />
-                </div>
-                
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Password</label>
-                  <div className="relative">
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      value={config.auth.password}
-                      onChange={(e) => updateField('auth', 'password', e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" 
-                    />
-                    <button 
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-on-surface-variant hover:text-primary"
-                    >
-                      {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Enterprise</label>
-                    <select 
-                      value={config.auth.enterprise}
-                      onChange={(e) => updateField('auth', 'enterprise', e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none appearance-none"
-                    >
-                      {ENTERPRISE_OPTIONS.map(opt => <option key={opt}>{opt}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Exercice</label>
-                    <select 
-                      value={config.auth.exercice}
-                      onChange={(e) => updateField('auth', 'exercice', e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none appearance-none"
-                    >
-                      {EXERCICE_OPTIONS.map(opt => <option key={opt}>{opt}</option>)}
-                    </select>
-                  </div>
+                  <button className="px-4 py-2 bg-surface-container-high border border-outline-variant rounded-xl text-xs font-bold hover:bg-surface-variant transition-colors shrink-0">
+                    Browse
+                  </button>
                 </div>
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
 
-          {/* Right Column: Browser & CDP (7 Cols) */}
-          <div className="lg:col-span-7 space-y-6">
-            <section className="bg-surface border border-outline-variant rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-black uppercase tracking-widest text-secondary mb-6 flex items-center gap-2">
-                <Network size={18} /> Browser Engine & CDP
-              </h3>
-              
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Browser Type</label>
-                  <select 
-                    value={config.browser.type}
-                    onChange={(e) => updateBrowserType(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none appearance-none"
-                  >
-                    {BROWSER_TYPES.map(opt => <option key={opt}>{opt}</option>)}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Launch Mode</label>
-                  <select 
-                    value={config.browser.mode}
-                    onChange={(e) => updateField('browser', 'mode', e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none appearance-none"
-                  >
-                    {LAUNCH_MODES.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                  </select>
-                </div>
-
-                <div className="col-span-2 space-y-1.5">
-                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Executable Path</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={config.browser.executable_path}
-                      onChange={(e) => updateField('browser', 'executable_path', e.target.value)}
-                      className="flex-1 bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-xs font-mono outline-none" 
-                    />
-                    <button className="px-4 py-2 bg-surface-container-high border border-outline-variant rounded-xl text-xs font-bold hover:bg-surface-variant transition-colors">
-                      Browse
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">CDP Port</label>
+          {/* Section 2: Launch Mode (Matches Python Radio Buttons) */}
+          <section className="bg-surface border border-outline-variant rounded-2xl p-6 shadow-sm space-y-4">
+            <h3 className="text-sm font-black uppercase tracking-widest text-secondary flex items-center gap-2">
+              <Network size={18} /> 2. Launch Mode
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {LAUNCH_MODES.map((mode) => (
+                <label 
+                  key={mode.id}
+                  className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                    cdpSettings.mode === mode.id 
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary' 
+                      : 'border-outline-variant bg-surface hover:bg-surface-container-low'
+                  }`}
+                >
                   <input 
-                    type="number" 
-                    value={config.browser.cdp_port}
-                    onChange={(e) => updateField('browser', 'cdp_port', parseInt(e.target.value))}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-mono outline-none" 
+                    type="radio" 
+                    name="launch_mode" 
+                    checked={cdpSettings.mode === mode.id}
+                    onChange={() => updateField('mode', mode.id)}
+                    className="w-4 h-4 accent-primary" 
                   />
-                </div>
+                  <span className="text-xs font-bold text-on-surface">{mode.label}</span>
+                </label>
+              ))}
+            </div>
+          </section>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">PWA URL</label>
-                  <input 
-                    type="text" 
-                    value={config.browser.pwa_url}
-                    onChange={(e) => updateField('browser', 'pwa_url', e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none" 
-                  />
-                </div>
-
-                <div className="col-span-2 flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 text-primary rounded-lg">
-                      <Monitor size={18} />
-                    </div>
-                    <div>
-                      <span className="block text-sm font-bold text-on-surface">Headless Execution</span>
-                      <span className="text-[10px] text-on-surface-variant uppercase font-bold">Run without visible window</span>
-                    </div>
-                  </div>
-                  <input 
-                    type="checkbox" 
-                    checked={config.browser.headless}
-                    onChange={(e) => updateField('browser', 'headless', e.target.checked)}
-                    className="w-6 h-6 rounded-lg accent-primary cursor-pointer" 
-                  />
-                </div>
+          {/* Section 3: Mode Specific Settings (Matches Python Section 3) */}
+          <section className="bg-surface border border-outline-variant rounded-2xl p-6 shadow-sm space-y-6">
+            <h3 className="text-sm font-black uppercase tracking-widest text-on-surface-variant flex items-center gap-2">
+              <Settings2 size={18} /> 3. Mode Specific Settings
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase flex items-center gap-2">
+                   <Activity size={14} /> CDP Port
+                </label>
+                <input 
+                  type="number" 
+                  value={cdpSettings.cdp_port}
+                  onChange={(e) => updateField('cdp_port', parseInt(e.target.value))}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm font-mono outline-none" 
+                />
               </div>
 
-              <div className="pt-4">
-                <button className="w-full bg-secondary-container text-on-secondary-container hover:bg-secondary-container/80 rounded-xl py-3 px-4 flex items-center justify-center gap-2 text-sm font-bold transition-all border border-outline-variant/30">
-                  <Activity size={18} /> Test CDP Connectivity
-                </button>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase flex items-center gap-2">
+                  <Folder size={14} /> Profile Directory
+                </label>
+                <input 
+                  type="text" 
+                  value={cdpSettings.profile_dir}
+                  onChange={(e) => updateField('profile_dir', e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none" 
+                />
               </div>
-            </section>
-          </div>
+
+              <div className="col-span-1 md:col-span-2 space-y-1.5">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase flex items-center gap-2">
+                  <Globe size={14} /> PWA / Entry URL
+                </label>
+                <input 
+                  type="text" 
+                  value={cdpSettings.pwa_url}
+                  onChange={(e) => updateField('pwa_url', e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none" 
+                />
+              </div>
+
+              <div className="col-span-1 md:col-span-2 flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <span className="block text-sm font-bold text-on-surface">Run in Background (Headless)</span>
+                    <span className="text-[10px] text-on-surface-variant uppercase font-bold">Standard automation performance</span>
+                  </div>
+                </div>
+                <input 
+                  type="checkbox" 
+                  checked={cdpSettings.headless}
+                  onChange={(e) => updateField('headless', e.target.checked)}
+                  className="w-6 h-6 rounded-lg accent-primary cursor-pointer" 
+                />
+              </div>
+            </div>
+
+            <button className="w-full bg-secondary-container text-on-secondary-container hover:bg-secondary-container/80 rounded-xl py-3 px-4 flex items-center justify-center gap-2 text-sm font-black transition-all border border-outline-variant/30">
+              <HardDrive size={18} /> Validate Connection to CDP
+            </button>
+          </section>
 
         </div>
       </div>
