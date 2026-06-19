@@ -1,14 +1,77 @@
 // services/endpoint.ts
-import { invoke } from '@tauri-apps/api/core';
+import { API_BASE_URL, API_ENDPOINTS } from '../metadata/apiConfig';
 
-export const AxeaneService = {
-  // Triggers Python: parse_vente_csv(path)
-  parseCSV: async (filePath: string, docType: string) => {
-    return await invoke('parse_csv_command', { filePath, docType });
+/**
+ * AXEANE FRONTEND API SERVICE
+ * Pure HTTP implementation. Agnostic of Tauri or Python internals.
+ */
+
+export const AxeaneAPI = {
+  
+  // Generic helper for requests
+  async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'API Request Failed');
+    }
+
+    return response.json();
   },
 
-  // Triggers native file picker
-  openFilePicker: async () => {
-    return await invoke<string | null>('open_file_dialog');
+  // 1. Upload CSV
+  async uploadFile(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.request<any>(API_ENDPOINTS.UPLOAD, {
+      method: 'POST',
+      body: formData, // Browser handles content-type for FormData
+      headers: {}, // Remove default JSON header
+    });
+  },
+
+  // 2. Trigger Parsing
+  async parseData(sessionId: string, docType: string = 'Vente') {
+    return this.request<any>(API_ENDPOINTS.PARSE, {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId, doc_type: docType }),
+    });
+  },
+
+  // 3. Fetch Formula Cards (Review Tab)
+  async getFormulas(sessionId: string) {
+    return this.request<any>(`${API_ENDPOINTS.FORMULAS}?session_id=${sessionId}`, {
+      method: 'GET',
+    });
+  },
+
+  // 4. Start Automation (Execution Tab)
+  async startAutomation(sessionId: string, mode: 'live' | 'dry_run') {
+    return this.request<any>(API_ENDPOINTS.EXECUTE, {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId, mode: mode }),
+    });
+  },
+
+  // 5. Poll Status & Logs
+  async getStatus(sessionId: string) {
+    return this.request<any>(`${API_ENDPOINTS.STATUS}?session_id=${sessionId}`, {
+      method: 'GET',
+    });
+  },
+
+  // 6. Stop Automation
+  async stopAutomation(sessionId: string) {
+    return this.request<any>(`${API_ENDPOINTS.STOP}?session_id=${sessionId}`, {
+      method: 'POST',
+    });
   }
 };

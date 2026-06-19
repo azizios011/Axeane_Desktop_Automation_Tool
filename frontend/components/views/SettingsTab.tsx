@@ -7,7 +7,7 @@ import {
   Save, Play, Hash, Landmark, Receipt, Coins, 
   ChevronRight, Sparkles 
 } from 'lucide-react';
-import { useRulesModule } from '@/modules/useRulesModule';
+import { useRulesModule } from '@/modules/useSettingsModule';
 import { ENTRY_STEPS, DEFAULT_TVA_RATES } from '@/metadata/rulesDefinitions';
 
 export function SettingsTab() {

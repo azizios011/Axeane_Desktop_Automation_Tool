@@ -1,38 +1,32 @@
 // modules/useImportModule.ts
 import { useState } from 'react';
-import { AxeaneService } from '../services/endpoint';
-import { DocType } from '../metadata/importSettings';
+import { AxeaneAPI } from '../services/endpoint';
 
 export function useImportModule() {
-  const [docType, setDocType] = useState<DocType>('Vente');
-  const [filePath, setFilePath] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [rawData, setRawData] = useState<any[]>([]);
   const [isParsing, setIsParsing] = useState(false);
-  const [previewData, setPreviewData] = useState<any[]>([]);
 
-  const handleBrowse = async () => {
-    const path = await AxeaneService.openFilePicker();
-    if (path) setFilePath(path);
-  };
-
-  const handleProcess = async (onSuccess: () => void) => {
-    if (!filePath) return;
-    
+  const handleUploadAndParse = async (file: File, docType: string) => {
     setIsParsing(true);
     try {
-      const result: any = await AxeaneService.parseCSV(filePath, docType);
-      setPreviewData(result.data); // result.data matches Python's parsed_data
-      onSuccess(); // Triggers navigation to next tab
-    } catch (error) {
-      console.error("Parsing failed", error);
+      // 1. Upload to Python
+      const uploadRes = await AxeaneAPI.uploadFile(file);
+      const sid = uploadRes.session_id;
+      setSessionId(sid);
+
+      // 2. Trigger Parse in Python
+      await AxeaneAPI.parseData(sid, docType);
+      
+      // 3. Optional: Fetch preview immediately if your backend returns it
+      // or wait for polling. For now, we assume success.
+      return sid;
+    } catch (err) {
+      console.error("Import Flow Failed:", err);
     } finally {
       setIsParsing(false);
     }
   };
 
-  return {
-    docType, setDocType,
-    filePath, handleBrowse,
-    isParsing, handleProcess,
-    previewData
-  };
+  return { sessionId, rawData, isParsing, handleUploadAndParse };
 }
