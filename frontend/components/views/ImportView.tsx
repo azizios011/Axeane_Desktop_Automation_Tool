@@ -1,69 +1,134 @@
+// components/views/ImportView.tsx
 "use client";
 
 import React from 'react';
-import { CloudUpload, ChevronDown, Info, FileText, ZoomOut, ZoomIn, Maximize, ArrowRight } from 'lucide-react';
+import { CloudUpload, ChevronDown, FileText, ArrowRight, Table as TableIcon, Loader2 } from 'lucide-react';
+import { useImportModule } from '@/modules/useImportModule';
+import { DOCUMENT_TYPES } from '@/metadata/importSettings';
 
 export function ImportView() {
+  const { 
+    docType, setDocType, 
+    filePath, handleBrowse, 
+    isParsing, handleProcess,
+    previewData 
+  } = useImportModule();
+
   return (
     <main className="ml-[var(--spacing-sidebar-width)] flex-1 flex flex-col h-full bg-background overflow-hidden">
       <header className="h-16 border-b border-outline-variant flex items-center justify-between px-6 bg-surface shrink-0">
-        <h2 className="text-xl font-bold">Document Import</h2>
-        <div className="flex items-center gap-4 text-on-surface-variant">
-          <Info size={18}/>
+        <h2 className="text-xl font-bold">1. Data Ingestion</h2>
+        <div className="flex items-center gap-2">
+          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${isParsing ? 'bg-primary/10 text-primary animate-pulse' : 'bg-secondary-container text-on-secondary-container'}`}>
+            {isParsing ? 'Engine Parsing...' : 'Ready'}
+          </span>
         </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Settings */}
-        <div className="w-[40%] flex flex-col border-r border-outline-variant bg-surface-container-low overflow-y-auto p-6 space-y-8">
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Document Type</label>
-            <div className="relative">
-              <select className="w-full appearance-none bg-surface border border-outline-variant rounded-md pl-3 pr-10 py-2.5 text-sm outline-none focus:border-primary">
-                <option>Banque (BQ) - Bank Statements</option>
-                <option>Vente (VT) - Sales Invoices</option>
-                <option>Achat (AC) - Purchases</option>
-              </select>
-              <ChevronDown className="absolute right-3 top-3 text-on-surface-variant pointer-events-none" size={16} />
+        {/* Left Control Panel */}
+        <div className="w-[380px] flex flex-col border-r border-outline-variant bg-surface overflow-y-auto p-6 space-y-8 shadow-sm">
+          
+          {/* Document Type Selection */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Document Type</label>
+            <div className="grid grid-cols-1 gap-2">
+              {DOCUMENT_TYPES.map((type) => (
+                <button
+                  key={type.id}
+                  onClick={() => setDocType(type.id as any)}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    docType === type.id 
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary' 
+                      : 'border-outline-variant hover:border-outline bg-surface'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${docType === type.id ? 'bg-primary text-white' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                      <FileText size={18} />
+                    </div>
+                    <span className="text-sm font-semibold">{type.label}</span>
+                  </div>
+                  {docType === type.id && <div className="w-2 h-2 rounded-full bg-primary" />}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Upload PDF</label>
-            <div className="border-2 border-dashed border-outline-variant rounded-xl bg-surface hover:bg-surface-container p-10 text-center cursor-pointer group transition-all">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                <CloudUpload className="text-primary" size={24} />
+          {/* File Picker */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Source File (CSV/Excel)</label>
+            <div 
+              onClick={handleBrowse}
+              className="border-2 border-dashed border-outline-variant rounded-2xl bg-surface-container-low hover:bg-surface-container hover:border-primary/50 p-8 text-center cursor-pointer group transition-all"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform text-primary">
+                <CloudUpload size={24} />
               </div>
-              <p className="text-sm font-bold mb-1">Drag and drop your PDF</p>
-              <p className="text-xs text-on-surface-variant mb-4">Maximum size: 20MB</p>
-              <button className="bg-surface border border-outline-variant py-1.5 px-4 rounded-md text-xs font-bold hover:bg-surface-container-high transition-colors">Select File</button>
+              <p className="text-sm font-bold text-on-surface">
+                {filePath ? filePath.split(/[\\/]/).pop() : 'Click to select CSV'}
+              </p>
+              <p className="text-[11px] text-on-surface-variant mt-1 italic">
+                {filePath ? 'File linked successfully' : 'Browse system files'}
+              </p>
             </div>
           </div>
 
-          <div className="pt-6 flex justify-end gap-3">
-            <button className="px-6 py-2 rounded-lg bg-primary text-white text-xs font-bold flex items-center gap-2 shadow-sm hover:opacity-90">
-              Process Document <ArrowRight size={16} />
-            </button>
-          </div>
+          {/* Action Button */}
+          <button 
+            disabled={!filePath || isParsing}
+            onClick={() => handleProcess(() => console.log("Navigate to ProcessView"))}
+            className="w-full py-4 rounded-xl bg-primary text-white font-bold flex items-center justify-center gap-3 shadow-lg shadow-primary/20 hover:opacity-90 disabled:grayscale disabled:opacity-50 transition-all mt-auto"
+          >
+            {isParsing ? <Loader2 className="animate-spin" /> : <ArrowRight size={18} />}
+            {isParsing ? 'Applying Accounting Rules...' : 'Parse & Generate Formulas'}
+          </button>
         </div>
 
-        {/* Right Preview */}
-        <div className="flex-1 bg-surface-container-highest flex flex-col relative">
-          <div className="h-10 border-b border-outline-variant bg-surface flex items-center justify-between px-4 shrink-0">
-            <span className="text-[10px] font-bold uppercase text-on-surface-variant">Document Preview</span>
-            <div className="flex gap-4">
-              <ZoomOut size={16} className="text-on-surface-variant cursor-pointer"/>
-              <ZoomIn size={16} className="text-on-surface-variant cursor-pointer"/>
-              <Maximize size={16} className="text-on-surface-variant cursor-pointer"/>
+        {/* Right Preview Panel (The Treeview Equivalent) */}
+        <div className="flex-1 bg-surface-container-low flex flex-col overflow-hidden">
+          <div className="h-12 border-b border-outline-variant bg-surface flex items-center px-4 justify-between shrink-0">
+            <div className="flex items-center gap-2 text-on-surface-variant">
+              <TableIcon size={16} />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Raw Data Preview</span>
             </div>
+            {previewData.length > 0 && (
+              <span className="text-[10px] font-mono bg-secondary-container px-2 py-0.5 rounded text-on-secondary-container">
+                {previewData.length} Rows Detected
+              </span>
+            )}
           </div>
           
-          <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#f5f5f7]">
-            <div className="w-48 h-64 bg-white shadow-xl border border-outline-variant rounded-lg flex items-center justify-center relative">
-               <FileText className="text-outline-variant opacity-20" size={64} />
-            </div>
-            <h3 className="text-sm font-bold mt-6">No File Loaded</h3>
-            <p className="text-xs text-on-surface-variant mt-1">Upload a PDF to view content</p>
+          <div className="flex-1 overflow-auto bg-surface-container-lowest">
+            {previewData.length > 0 ? (
+              <table className="w-full text-left border-collapse min-w-max">
+                <thead className="sticky top-0 bg-surface-container-high z-10">
+                  <tr>
+                    {Object.keys(previewData[0]).map((key) => (
+                      <th key={key} className="p-3 text-[10px] font-black uppercase text-on-surface-variant border-b border-outline-variant">
+                        {key}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/30">
+                  {previewData.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-primary/5 transition-colors">
+                      {Object.values(row).map((val: any, vIdx) => (
+                        <td key={vIdx} className="p-3 text-xs font-medium text-on-surface border-r border-outline-variant/10">
+                          {typeof val === 'number' ? val.toFixed(3) : String(val)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-on-surface-variant opacity-40">
+                <TableIcon size={48} strokeWidth={1} />
+                <p className="text-sm font-medium mt-4">Waiting for data parsing...</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
