@@ -7,7 +7,7 @@ import {
   AlertTriangle, ShieldCheck, Upload, FileUp 
 } from 'lucide-react';
 
-export function ValidationView() {
+export function ReviewTab() {
   const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
 
   return (

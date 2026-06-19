@@ -6,7 +6,7 @@ import { Play, Square, RefreshCw, Terminal, Cpu, CheckCircle2, AlertTriangle, Bo
 import { useProcessModule } from '@/modules/useProcessModule';
 import { CARD_THEMES, LOG_COLORS } from '@/metadata/processSettings';
 
-export function ProcessView() {
+export function ExecutionTab() {
   const { 
     cards, handleGenerateTemplates, 
     isExecuting, handleStartAutomation, handleStop,

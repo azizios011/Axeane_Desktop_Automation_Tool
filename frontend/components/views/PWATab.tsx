@@ -9,7 +9,7 @@ import {
 import { useCdpModule } from '@/modules/useCdpModule';
 import { BROWSER_TYPES, LAUNCH_MODES, ENTERPRISE_OPTIONS, EXERCICE_OPTIONS } from '@/metadata/cdpDefaults';
 
-export function CdpSettingsView() {
+export function PWATab() {
   const { 
     config, updateField, updateBrowserType, 
     showPassword, setShowPassword, handleSave 

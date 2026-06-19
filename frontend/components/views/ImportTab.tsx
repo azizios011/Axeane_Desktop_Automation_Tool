@@ -6,7 +6,7 @@ import { CloudUpload, ChevronDown, FileText, ArrowRight, Table as TableIcon, Loa
 import { useImportModule } from '@/modules/useImportModule';
 import { DOCUMENT_TYPES } from '@/metadata/importSettings';
 
-export function ImportView() {
+export function ImportTab() {
   const { 
     docType, setDocType, 
     filePath, handleBrowse, 
