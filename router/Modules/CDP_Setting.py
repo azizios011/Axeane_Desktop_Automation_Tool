@@ -1,92 +1,128 @@
 # Modules/CDP_Setting.py
 import os
-from playwright.async_api import async_playwright, Browser, Page
+import subprocess
+import asyncio
+from playwright.async_api import async_playwright
+from Debug.Logger import ColorLogger as log
+
 
 class CDPManager:
-    MODE_NORMAL = "Standard Launch (Fresh session)"
-    MODE_PERSISTENT = "Persistent Profile (Keep Login)"
-    MODE_CDP_CONNECT = "Connect to Existing CDP (Attach to logged-in browser)"
-    MODE_PWA = "PWA Mode (Standalone App)"
+    """Manages Chrome DevTools Protocol (CDP) browser launch and connection."""
 
     def __init__(self, settings: dict):
-        self.mode = settings.get("mode", self.MODE_NORMAL)
-        self.cdp_port = settings.get("cdp_port", 9222)
-        self.profile_dir = settings.get("profile_dir", "./axeane_browser_profile")
-        self.pwa_url = settings.get("pwa_url", "https://kompta.axeane.com")
-        self.headless = settings.get("headless", False)
-        
-        # New Browser Settings
         self.browser_type = settings.get("browser_type", "Chrome")
         self.executable_path = settings.get("executable_path", "")
+        self.mode = settings.get("mode", "Persistent Profile (Keep Login)")
+        self.cdp_port = settings.get("cdp_port", 9222)
+        self.profile_dir = settings.get("profile_dir", "./axeane_browser_profile")
+        self.playwright = None
+        self.browser = None
+        self.page = None
+        self.browser_process = None
 
-    def _get_launch_kwargs(self):
-        """Builds the arguments for playwright.chromium.launch() based on UI settings"""
-        kwargs = {"headless": self.headless}
-        
-        # If user selected a specific browser type, use the 'channel' argument
-        if self.browser_type == "Edge":
-            kwargs["channel"] = "msedge"
-        elif self.browser_type == "Chrome":
-            kwargs["channel"] = "chrome"
-            
-        # If user provided a custom executable path, it overrides the channel
+    def _get_executable_path(self) -> str:
+        """Get the browser executable path."""
         if self.executable_path and os.path.exists(self.executable_path):
-            kwargs["executable_path"] = self.executable_path
-            # Remove channel if using custom path to avoid conflicts
-            kwargs.pop("channel", None) 
-            
-        return kwargs
+            return self.executable_path
+        
+        # Default paths
+        if self.browser_type == "Edge":
+            paths = [
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            ]
+        else:  # Chrome
+            paths = [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            ]
+        
+        for path in paths:
+            if os.path.exists(path):
+                return path
+        
+        return ""
 
-    async def get_browser_and_page(self) -> tuple[Browser, Page]:
-        playwright = await async_playwright().start()
-        browser = None
-        page = None
-        launch_args = self._get_launch_kwargs()
-
-        if self.mode == self.MODE_CDP_CONNECT:
-            print(f"[CDP] 🔌 Connecting to existing browser on port {self.cdp_port}...")
-            browser = await playwright.chromium.connect_over_cdp(f"http://localhost:{self.cdp_port}")
-            context = browser.contexts[0] if browser.contexts else await browser.new_context()
-            page = context.pages[0] if context.pages else await context.new_page()
-
-        elif self.mode == self.MODE_PERSISTENT:
-            print(f"[CDP] 💾 Launching {self.browser_type} with persistent profile...")
-            os.makedirs(self.profile_dir, exist_ok=True)
-            # Persistent context requires slightly different args
-            context = await playwright.chromium.launch_persistent_context(
-                user_data_dir=self.profile_dir,
-                **launch_args,
-                args=["--disable-blink-features=AutomationControlled"]
-            )
-            browser = context.browser
-            page = context.pages[0] if context.pages else await context.new_page()
-
-        elif self.mode == self.MODE_PWA:
-            print(f"[CDP] 🚀 Launching {self.browser_type} in PWA mode for {self.pwa_url}")
-            launch_args["args"] = [f"--app={self.pwa_url}", "--disable-extensions"]
-            browser = await playwright.chromium.launch(**launch_args)
-            context = await browser.new_context()
-            page = await context.new_page()
-            if self.pwa_url not in page.url:
-                await page.goto(self.pwa_url)
-
-        else: # Normal Launch
-            print(f"[CDP] 🌐 Launching standard {self.browser_type} instance...")
-            browser = await playwright.chromium.launch(**launch_args)
-            context = await browser.new_context()
-            page = await context.new_page()
-
-        return browser, page
-
-    async def cleanup(self, browser: Browser):
+    async def launch_browser(self) -> bool:
+        """Launch the browser with debugging enabled."""
         try:
-            if self.mode == self.MODE_CDP_CONNECT:
-                await browser.close() 
-            elif self.mode == self.MODE_PERSISTENT:
-                if browser.contexts:
-                    await browser.contexts[0].close()
+            exe_path = self._get_executable_path()
+            if not exe_path:
+                log.error(f"Could not find {self.browser_type} executable")
+                return False
+            
+            # Create user data directory if it doesn't exist
+            os.makedirs(self.profile_dir, exist_ok=True)
+            
+            # Build launch arguments
+            args = [
+                exe_path,
+                f"--remote-debugging-port={self.cdp_port}",
+                f"--user-data-dir={self.profile_dir}",
+                "--disable-blink-features=AutomationControlled",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ]
+            
+            log.info(f"Launching {self.browser_type} with args: {args}")
+            
+            # Launch browser as subprocess
+            self.browser_process = subprocess.Popen(
+                args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            
+            # Wait for browser to start
+            await asyncio.sleep(3)
+            
+            if self.browser_process.poll() is None:
+                log.success(f"Browser launched successfully on port {self.cdp_port}")
+                return True
             else:
-                await browser.close()
+                log.error("Browser process terminated unexpectedly")
+                return False
+                
         except Exception as e:
-            print(f"[CDP] Warning during cleanup: {e}")
+            log.error(f"Failed to launch browser: {e}")
+            return False
+
+    async def connect_to_browser(self):
+        """Connect to the running browser via CDP."""
+        try:
+            self.playwright = await async_playwright().start()
+            
+            log.info(f"Connecting to browser on port {self.cdp_port}...")
+            self.browser = await self.playwright.chromium.connect_over_cdp(
+                f"http://localhost:{self.cdp_port}"
+            )
+            
+            # Get or create page
+            if self.browser.contexts:
+                context = self.browser.contexts[0]
+                self.page = context.pages[0] if context.pages else await context.new_page()
+            else:
+                context = await self.browser.new_context()
+                self.page = await context.new_page()
+            
+            log.success("Connected to browser successfully")
+            return self.browser, self.page
+            
+        except Exception as e:
+            log.error(f"Failed to connect to browser: {e}")
+            raise
+
+    async def cleanup(self):
+        """Clean up browser and playwright."""
+        try:
+            if self.browser:
+                await self.browser.close()
+            if self.playwright:
+                await self.playwright.stop()
+            if self.browser_process:
+                self.browser_process.terminate()
+                self.browser_process.wait(timeout=5)
+            log.info("Browser cleanup completed")
+        except Exception as e:
+            log.warn(f"Cleanup warning: {e}")
             

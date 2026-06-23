@@ -89,7 +89,7 @@ def main():
     
     # Initialize tabs
     settings_tab = SettingsTab(tabview, shared_state)
-    pwa_tab = PWATab(tabview, shared_state)
+    pwa_tab = PWATab(tabview, shared_state, root)
     import_tab = ImportTab(tabview, shared_state, lambda: tabview.select(review_tab.frame))
     review_tab = ReviewAndRulesTab(tabview, shared_state)
     execution_tab = ExecutionTab(tabview, shared_state, root)
