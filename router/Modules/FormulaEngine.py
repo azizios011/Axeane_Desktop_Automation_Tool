@@ -71,82 +71,96 @@ class FormulaEngine:
                 return rate_config.get("ht_account"), rate_config.get("tva_account")
         return None, None
 
-    def _generate_formula_for_rows(self, rows_in_group, profile):
-        """Generate accounting lines for a group of rows sharing the same reference/profile."""
-        if not profile or not rows_in_group:
-            return []
+# Modules/FormulaEngine.py (FIXED)
+# ... (keep all existing code) ...
 
-        lines = []
-        first_row = rows_in_group[0]
-        client_name = self._extract_client_name(first_row.get("client_name", ""))
-        ttc = float(first_row.get("ttc", 0) or 0)
-        compte_client = profile.get("compte_client")
-        use_timbre = profile.get("use_timbre", False)
-        use_cash = profile.get("use_cash", False)
+def _generate_formula_lines(self, rows_in_ref, profile):
+    """
+    Generate accounting lines for a group of rows sharing the same reference.
+    FIX: Take TTC from first row only (not sum across all rows).
+    """
+    if not profile or not rows_in_ref:
+        return []
 
-        # Client total (debit) — once per invoice
+    lines = []
+    first_row = rows_in_ref[0]
+    client_name = self._extract_client_name(first_row.get("client_name", ""))
+    
+    # FIX: Take TTC from first row only
+    ttc = float(first_row.get("ttc", 0) or 0)
+    
+    compte_client = profile.get("compte_client")
+    use_timbre = profile.get("use_timbre", False)
+    use_cash = profile.get("use_cash", False)
+
+    # Step 1: Client Total (Debit TTC) - ONCE per invoice
+    lines.append({
+        "step": "client_total",
+        "account": compte_client,
+        "label": client_name,
+        "debit": ttc,
+        "credit": 0,
+    })
+
+    # Step 2 & 3: TVA and Revenue for EACH row (handles multi-TVA)
+    for row in rows_in_ref:
+        tva_rate = float(row.get("tva_rate", 0) or 0)
+        tva_amt = float(row.get("tva_amt", 0) or 0)
+        net_ht = float(row.get("net_ht", 0) or 0)
+
+        ht_account, tva_account = self._get_tax_accounts(tva_rate)
+
+        if tva_account and tva_amt > 0:
+            lines.append({
+                "step": f"tax_split_{int(tva_rate)}",
+                "account": tva_account,
+                "label": f"TVA {int(tva_rate)}%",
+                "debit": 0,
+                "credit": tva_amt,
+            })
+
+        if ht_account and net_ht > 0:
+            lines.append({
+                "step": f"revenue_split_{int(tva_rate)}",
+                "account": ht_account,
+                "label": f"Revenue {int(tva_rate)}%",
+                "debit": 0,
+                "credit": net_ht,
+            })
+
+    # Step 4: Timbre Fiscal (if applicable) - ONCE per invoice
+    if use_timbre:
+        timbre_cfg = self.vente_rules.get("accounting_logic", {}).get("timbre_fiscal", {})
+        timbre_account = timbre_cfg.get("account", "437000")
+        timbre_amount = float(timbre_cfg.get("default_amount", 1.0))
         lines.append({
-            "step": "client_total",
+            "step": "timbre",
+            "account": timbre_account,
+            "label": timbre_cfg.get("label", "TIMBRE FISCAL"),
+            "debit": 0,
+            "credit": timbre_amount,
+        })
+
+    # Step 5: Cash Reroute (if applicable) - ONCE per invoice
+    if use_cash:
+        caisse_account = profile.get("compte_caisse", "541100")
+        lines.append({
+            "step": "cash_reroute_credit",
             "account": compte_client,
-            "label": client_name,
+            "label": "Cash reroute",
+            "debit": 0,
+            "credit": ttc,
+        })
+        lines.append({
+            "step": "cash_reroute_debit",
+            "account": caisse_account,
+            "label": "Caisse",
             "debit": ttc,
             "credit": 0,
         })
 
-        # TVA + Revenue for each row (handles multi-TVA)
-        for row in rows_in_group:
-            tva_rate = float(row.get("tva_rate", 0) or 0)
-            tva_amt = float(row.get("tva_amt", 0) or 0)
-            net_ht = float(row.get("net_ht", 0) or 0)
-            ht_account, tva_account = self._get_tax_accounts(tva_rate)
-
-            if tva_account and tva_amt > 0:
-                lines.append({
-                    "step": f"tax_split_{int(tva_rate)}",
-                    "account": tva_account,
-                    "label": f"TVA {int(tva_rate)}%",
-                    "debit": 0,
-                    "credit": tva_amt,
-                })
-            if ht_account and net_ht > 0:
-                lines.append({
-                    "step": f"revenue_split_{int(tva_rate)}",
-                    "account": ht_account,
-                    "label": f"Revenue {int(tva_rate)}%",
-                    "debit": 0,
-                    "credit": net_ht,
-                })
-
-        # Timbre (once per invoice)
-        if use_timbre:
-            timbre_cfg = self.vente_rules.get("accounting_logic", {}).get("timbre_fiscal", {})
-            lines.append({
-                "step": "timbre",
-                "account": timbre_cfg.get("account", "437000"),
-                "label": timbre_cfg.get("label", "TIMBRE FISCAL"),
-                "debit": 0,
-                "credit": float(timbre_cfg.get("default_amount", 1.0)),
-            })
-
-        # Cash reroute
-        if use_cash:
-            caisse_account = profile.get("compte_caisse", "541100")
-            lines.append({
-                "step": "cash_reroute_credit",
-                "account": compte_client,
-                "label": "Cash reroute",
-                "debit": 0,
-                "credit": ttc,
-            })
-            lines.append({
-                "step": "cash_reroute_debit",
-                "account": caisse_account,
-                "label": "Caisse",
-                "debit": ttc,
-                "credit": 0,
-            })
-
-        return lines
+    return lines
+    
 
     # ============================================================
     # NEW: Template cards grouped by client PROFILE
