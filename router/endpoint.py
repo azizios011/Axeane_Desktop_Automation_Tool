@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from Function.csv_parser import parse_bank_csv, parse_vente_csv
+from Function.csv_parser import parse_bank_csv, parse_bank_pdf, parse_vente_csv
 from Modules.FormulaEngine import FormulaEngine
 from Debug.Logger import ColorLogger as log
 
@@ -148,11 +148,14 @@ def get_session_path(session_id: str) -> Path:
     if not session_dir.exists():
         raise HTTPException(status_code=404, detail="Session not found")
     
-    csv_files = list(session_dir.glob("*.csv"))
-    if not csv_files:
-        raise HTTPException(status_code=404, detail="No CSV file found for session")
+    uploaded_files = [
+        p for p in session_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in {".csv", ".pdf"}
+    ]
+    if not uploaded_files:
+        raise HTTPException(status_code=404, detail="No import file found for session")
     
-    return csv_files[0]
+    return uploaded_files[0]
 
 # ============================================================================
 # ENDPOINTS
@@ -173,8 +176,9 @@ async def upload_csv(file: UploadFile = File(...)):
     Upload a CSV file for processing.
     Returns a session_id that must be used in subsequent requests.
     """
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
+    extension = Path(file.filename).suffix.lower()
+    if extension not in {'.csv', '.pdf'}:
+        raise HTTPException(status_code=400, detail="Only CSV and PDF files are allowed")
     
     # Create new session
     session_id = str(uuid.uuid4())
@@ -186,9 +190,12 @@ async def upload_csv(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     
-    # Quick row count
-    with open(file_path, 'r', encoding='utf-8-sig') as f:
-        row_count = sum(1 for _ in f) - 1  # Subtract header
+    # Quick row/page count
+    if extension == ".csv":
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
+            row_count = sum(1 for _ in f) - 1  # Subtract header
+    else:
+        row_count = 0
     
     state.current_session_id = session_id
     state.reset()
@@ -221,11 +228,19 @@ async def parse_csv(request: ParseRequest, background_tasks: BackgroundTasks):
             if doc_type not in {"vente", "bank", "banque"}:
                 raise ValueError(f"Unsupported doc_type: {request.doc_type}")
 
-            # Parse CSV (run in thread to avoid blocking)
+            is_bank = doc_type in {"bank", "banque"}
+            is_pdf = file_path.suffix.lower() == ".pdf"
+
+            if is_pdf and not is_bank:
+                raise ValueError("PDF parsing is currently supported for Bank documents only.")
+
+            # Parse source file (run in thread to avoid blocking)
             loop = asyncio.get_event_loop()
             raw_data, _ = await loop.run_in_executor(
                 None, 
-                lambda: parse_bank_csv(str(file_path)) if doc_type in {"bank", "banque"} else parse_vente_csv(str(file_path))
+                lambda: parse_bank_pdf(str(file_path)) if is_pdf else (
+                    parse_bank_csv(str(file_path)) if is_bank else parse_vente_csv(str(file_path))
+                )
             )
             
             state.raw_data = raw_data
@@ -234,7 +249,7 @@ async def parse_csv(request: ParseRequest, background_tasks: BackgroundTasks):
             # Generate formulas
             state.add_log("INFO", "Generating formula cards...")
             engine = FormulaEngine()
-            cards = engine.build_bank_cards(raw_data) if doc_type in {"bank", "banque"} else engine.build_cards(raw_data)
+            cards = engine.build_bank_cards(raw_data) if is_bank else engine.build_cards(raw_data)
             
             state.formula_cards = cards
             state.execution_status = "completed"
