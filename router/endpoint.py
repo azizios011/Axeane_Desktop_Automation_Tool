@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from Function.csv_parser import parse_vente_csv
+from Function.csv_parser import parse_bank_csv, parse_vente_csv
 from Modules.FormulaEngine import FormulaEngine
 from Debug.Logger import ColorLogger as log
 
@@ -113,6 +113,11 @@ class FormulaCard(BaseModel):
     is_balanced: bool
     formula_lines: List[Dict]
     sample_client: Optional[str] = None
+    doc_type: Optional[str] = "Vente"
+    total_amount: Optional[float] = None
+    signed_amount: Optional[float] = None
+    category: Optional[str] = None
+    journal: Optional[str] = None
 
 class FormulasResponse(BaseModel):
     session_id: str
@@ -212,11 +217,15 @@ async def parse_csv(request: ParseRequest, background_tasks: BackgroundTasks):
         try:
             file_path = get_session_path(request.session_id)
             
+            doc_type = request.doc_type.strip().lower()
+            if doc_type not in {"vente", "bank", "banque"}:
+                raise ValueError(f"Unsupported doc_type: {request.doc_type}")
+
             # Parse CSV (run in thread to avoid blocking)
             loop = asyncio.get_event_loop()
             raw_data, _ = await loop.run_in_executor(
                 None, 
-                lambda: parse_vente_csv(str(file_path))
+                lambda: parse_bank_csv(str(file_path)) if doc_type in {"bank", "banque"} else parse_vente_csv(str(file_path))
             )
             
             state.raw_data = raw_data
@@ -225,7 +234,7 @@ async def parse_csv(request: ParseRequest, background_tasks: BackgroundTasks):
             # Generate formulas
             state.add_log("INFO", "Generating formula cards...")
             engine = FormulaEngine()
-            cards = engine.build_cards(raw_data)
+            cards = engine.build_bank_cards(raw_data) if doc_type in {"bank", "banque"} else engine.build_cards(raw_data)
             
             state.formula_cards = cards
             state.execution_status = "completed"

@@ -16,6 +16,9 @@ class FormulaEngine:
     def __init__(self):
         self.vente_formats = self._load_json("DB/Vente_Formats.json")
         self.vente_rules = self._load_json("DB/Vente_Rules.json")
+        self.bank_formats = self._load_json("DB/Bank_Formats.json")
+        self.bank_rules = self._load_json("DB/Bank_rules.json")
+        self.bank_structure = self._load_json("DB/Bank_Structure.json")
         self.cards = []
 
     def _load_json(self, path):
@@ -68,6 +71,102 @@ class FormulaEngine:
             if float(rate_config.get("rate", -1)) == target:
                 return rate_config.get("ht_account"), rate_config.get("tva_account")
         return None, None
+
+    def _match_bank_mapping(self, label):
+        mappings = self.bank_formats.get("mappings", [])
+        label_upper = (label or "").upper()
+
+        for mapping in mappings:
+            keyword = mapping.get("keyword", "").upper()
+            if keyword and keyword in label_upper:
+                return mapping, "keyword", keyword
+
+        return {
+            "keyword": "UNMAPPED",
+            "account": self.bank_rules.get("tax_calculation", {}).get("base_account", "471000"),
+            "label": "Unmapped Bank Transaction",
+        }, "default", "UNMAPPED"
+
+    def _bank_sides_for_amount(self, amount):
+        inversion = self.bank_rules.get("inversion_logic", {})
+        if amount >= 0:
+            logic = inversion.get("doc_credit_means", {})
+        else:
+            logic = inversion.get("doc_debit_means", {})
+
+        return (
+            logic.get("bank_action", "debit"),
+            logic.get("counterpart_action", "credit"),
+            logic.get("category", "Bank"),
+        )
+
+    def _amount_on_side(self, side, amount):
+        return {
+            "debit": amount if side == "debit" else 0.0,
+            "credit": amount if side == "credit" else 0.0,
+        }
+
+    def _extract_bank_tax_amount(self, label, total_amount):
+        tax_cfg = self.bank_rules.get("tax_calculation", {})
+        marker = tax_cfg.get("detect_keyword", "DONT TVA:")
+        label_upper = (label or "").upper()
+        marker_upper = marker.upper()
+
+        if marker_upper in label_upper:
+            after_marker = label_upper.split(marker_upper, 1)[1].strip()
+            token = after_marker.split()[0] if after_marker else ""
+            cleaned = token.strip(" :;,.").replace(",", ".")
+            try:
+                return min(abs(float(cleaned)), total_amount)
+            except ValueError:
+                log.warn(f"Could not parse bank tax amount from label: {label}")
+
+        rate = float(tax_cfg.get("default_rate", 0.19) or 0)
+        if rate <= 0:
+            return 0.0
+        return total_amount - (total_amount / (1 + rate))
+
+    def _generate_bank_formula_lines(self, row, mapping):
+        amount = float(row.get("abs_amount", abs(float(row.get("amount", 0) or 0))) or 0)
+        label = row.get("label", "") or mapping.get("label", "Bank Transaction")
+        bank_account = self.bank_rules.get("bank_account_pivot", "532100")
+        bank_side, counterpart_side, _ = self._bank_sides_for_amount(float(row.get("amount", 0) or 0))
+
+        lines = [{
+            "step": "bank_pivot",
+            "account": bank_account,
+            "label": label,
+            **self._amount_on_side(bank_side, amount),
+        }]
+
+        if mapping.get("is_split"):
+            tax_amount = self._extract_bank_tax_amount(label, amount)
+            base_amount = max(amount - tax_amount, 0.0)
+
+            if base_amount > 0:
+                lines.append({
+                    "step": "counterpart_base",
+                    "account": mapping.get("base_account") or self.bank_rules.get("tax_calculation", {}).get("base_account"),
+                    "label": mapping.get("label", label),
+                    **self._amount_on_side(counterpart_side, base_amount),
+                })
+
+            if tax_amount > 0:
+                lines.append({
+                    "step": "counterpart_tax",
+                    "account": mapping.get("tax_account") or self.bank_rules.get("tax_calculation", {}).get("default_tax_account"),
+                    "label": "TVA bancaire",
+                    **self._amount_on_side(counterpart_side, tax_amount),
+                })
+        else:
+            lines.append({
+                "step": "counterpart",
+                "account": mapping.get("account"),
+                "label": mapping.get("label", label),
+                **self._amount_on_side(counterpart_side, amount),
+            })
+
+        return lines
 
     def _generate_formula_lines(self, rows_in_ref, profile):
         """
@@ -227,6 +326,64 @@ class FormulaEngine:
             rates_str = "+".join(f"{int(r)}%" for r in c["tva_rates"]) if c["tva_rates"] else "N/A"
             balance_str = "✓" if c["is_balanced"] else "✗"
             log.info(f"  • {c['ref']:15s} | {c['sample_client'][:20]:20s} | TVA: {rates_str:10s} | {c['row_count']} rows | TTC {c['total_ttc']:>11.3f} | {balance_str}")
+
+        return cards
+
+    def build_bank_cards(self, rows):
+        """
+        Build formula cards from normalized bank rows.
+        One card is generated per bank transaction.
+        """
+        log.info(f"Building bank cards for {len(rows)} rows...")
+
+        cards = []
+        for index, row in enumerate(rows, start=1):
+            ref = row.get("ref") or f"BANK-{index:05d}"
+            label = row.get("label", "")
+            amount = float(row.get("amount", 0) or 0)
+            abs_amount = abs(amount)
+
+            mapping, match_type, match_key = self._match_bank_mapping(label)
+            formula_lines = self._generate_bank_formula_lines(row, mapping)
+
+            total_debit = sum(l["debit"] for l in formula_lines)
+            total_credit = sum(l["credit"] for l in formula_lines)
+            is_balanced = abs(total_debit - total_credit) < 0.01
+            _, _, category = self._bank_sides_for_amount(amount)
+
+            card = {
+                "ref": ref,
+                "doc_type": "Bank",
+                "match_key": match_key,
+                "match_type": match_type,
+                "profile": mapping,
+                "row_count": 1,
+                "tva_rates": [],
+                "total_ttc": abs_amount,
+                "total_amount": abs_amount,
+                "signed_amount": amount,
+                "formula_lines": formula_lines,
+                "total_debit": total_debit,
+                "total_credit": total_credit,
+                "is_balanced": is_balanced,
+                "sample_client": label,
+                "category": category,
+                "journal": self.bank_structure.get("default_journal", "BQ"),
+            }
+            cards.append(card)
+
+            if not is_balanced:
+                log.warn(f"Bank formula for {ref} is NOT balanced! Debit: {total_debit}, Credit: {total_credit}")
+
+        self.cards = cards
+
+        log.success(f"Built {len(cards)} bank cards")
+        for c in cards:
+            balance_str = "OK" if c["is_balanced"] else "ERR"
+            log.info(
+                f"  - {c['ref']:15s} | {c['match_key'][:20]:20s} | "
+                f"Amount {c['total_ttc']:>11.3f} | {balance_str}"
+            )
 
         return cards
 

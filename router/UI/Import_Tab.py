@@ -4,7 +4,7 @@ from tkinter import ttk, filedialog, messagebox
 import threading
 import json
 import os
-from Function.csv_parser import parse_vente_csv, strip_keys
+from Function.csv_parser import parse_bank_csv, parse_vente_csv, strip_keys
 from Debug.Logger import ColorLogger as log
 
 class ImportTab:
@@ -102,9 +102,7 @@ class ImportTab:
                 # Now returns (data, headers) tuple
                 parsed_data, csv_headers = parse_vente_csv(path)
             else:
-                # TODO: Implement parse_bank_csv
-                log.warn("Bank parsing not yet implemented.")
-                parsed_data, csv_headers = [], []
+                parsed_data, csv_headers = parse_bank_csv(path)
 
             if not parsed_data:
                 self.frame.after(0, lambda: self.status_label.config(text="Status: No data parsed. Check logs.", foreground="red"))

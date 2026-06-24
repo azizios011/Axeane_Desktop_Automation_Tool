@@ -164,3 +164,109 @@ def parse_vente_csv(file_path: str) -> tuple:
         log.debug(f"Sample parsed row: TTC={sample.get('ttc')}, TVA%={sample.get('tva_rate')}, TVA_Amt={sample.get('tva_amt')}")
     
     return data, csv_headers
+
+
+def parse_bank_csv(file_path: str) -> tuple:
+    """Reads the Bank CSV and maps columns to the JSON structure."""
+    log.info(f"Starting Bank CSV parse for: {file_path}")
+
+    struct_path = "DB/Bank_Structure.json"
+    if not os.path.exists(struct_path):
+        log.error(f"Structure file not found: {struct_path}")
+        return [], []
+
+    with open(struct_path, 'r', encoding='utf-8') as f:
+        structure = strip_keys(json.load(f))
+
+    col_map = structure.get("column_mapping", {})
+    numeric_fields = set(structure.get("numeric_fields", []))
+    log.debug(f"Bank column mapping loaded: {col_map}")
+
+    data = []
+    errors = 0
+    csv_headers = []
+
+    try:
+        with open(file_path, mode='r', encoding='utf-8-sig') as f:
+            sample = f.read(2048)
+            f.seek(0)
+            try:
+                dialect = csv.Sniffer().sniff(sample)
+            except csv.Error:
+                dialect = 'excel'
+
+            reader = csv.DictReader(f, dialect=dialect)
+            csv_headers = [h.strip().lstrip('\ufeff') for h in (reader.fieldnames or [])]
+
+            log.info(f"Bank CSV headers found (in order): {csv_headers}")
+
+            for row_num, row in enumerate(reader, start=2):
+                try:
+                    row = {k.strip().lstrip('\ufeff'): v for k, v in row.items()}
+
+                    parsed_row = {}
+                    for csv_col in csv_headers:
+                        csv_col_stripped = csv_col.strip()
+                        val = row.get(csv_col_stripped, "")
+                        internal_key = col_map.get(csv_col_stripped, csv_col_stripped)
+
+                        if internal_key in numeric_fields:
+                            parsed_val = parse_number(val)
+                        else:
+                            parsed_val = val.strip() if isinstance(val, str) else val
+
+                        parsed_row[csv_col_stripped] = parsed_val
+                        parsed_row[internal_key] = parsed_val
+
+                    amount = _resolve_bank_amount(parsed_row)
+                    if amount == 0:
+                        label = parsed_row.get("label", "")
+                        ref = parsed_row.get("ref", "")
+                        if not label and not ref:
+                            log.debug(f"Row {row_num}: Skipping empty bank row")
+                            continue
+
+                    parsed_row["amount"] = amount
+                    parsed_row["abs_amount"] = abs(amount)
+                    parsed_row["flow"] = "credit" if amount > 0 else "debit"
+
+                    if not parsed_row.get("ref"):
+                        parsed_row["ref"] = f"BANK-{row_num - 1:05d}"
+
+                    data.append(parsed_row)
+
+                    if row_num <= 4:
+                        log.debug(
+                            f"Bank row {row_num} parsed: Ref={parsed_row.get('ref')}, "
+                            f"Amount={parsed_row.get('amount')}, Label={parsed_row.get('label', '')[:40]}"
+                        )
+
+                except Exception as e:
+                    errors += 1
+                    log.error(f"Bank row {row_num} parsing error: {e} | Data: {row}")
+
+    except Exception as e:
+        log.error(f"Failed to open/read Bank CSV file: {e}")
+        return [], []
+
+    log.success(f"Bank CSV parsing complete. {len(data)} rows loaded, {errors} errors.")
+    return data, csv_headers
+
+
+def _resolve_bank_amount(row: dict) -> float:
+    """
+    Bank CSVs may provide either a signed Amount column or split Debit/Credit
+    columns. Positive amounts are money in; negative amounts are money out.
+    """
+    signed_amount = float(row.get("amount", 0) or 0)
+    if signed_amount != 0:
+        return signed_amount
+
+    debit = float(row.get("debit", 0) or 0)
+    credit = float(row.get("credit", 0) or 0)
+
+    if credit:
+        return abs(credit)
+    if debit:
+        return -abs(debit)
+    return 0.0

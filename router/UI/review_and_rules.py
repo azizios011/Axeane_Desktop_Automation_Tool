@@ -304,6 +304,10 @@ class ReviewAndRulesTab:
             cards = self.engine.build_template_cards(raw_data)
             self.state["template_cards"] = cards
             
+            # Generate execution formula cards
+            formula_cards = self.engine.build_cards(raw_data)
+            self.state["formula_cards"] = formula_cards
+            
             # Update summary
             summary = self.engine.get_summary()
             summary_text = (
