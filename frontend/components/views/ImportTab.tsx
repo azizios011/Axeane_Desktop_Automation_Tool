@@ -53,7 +53,7 @@ export function ImportTab({ sessionId, setSessionId, onChangeTab }: ImportTabPro
                 Browse
                 <input 
                   type="file" 
-                  accept=".csv"
+                  accept=".csv,.pdf"
                   className="hidden" 
                   onChange={(e) => {
                     const selected = e.target.files?.[0];
@@ -107,7 +107,7 @@ export function ImportTab({ sessionId, setSessionId, onChangeTab }: ImportTabPro
           <div className="h-12 border-b border-outline-variant bg-surface flex items-center px-6 justify-between">
             <div className="flex items-center gap-2 text-on-surface-variant">
               <TableIcon size={16} />
-              <span className="text-[10px] font-black uppercase tracking-widest">Raw CSV Preview</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">Raw File Preview</span>
             </div>
             <div className="relative">
               <Search className="absolute left-3 top-2 text-on-surface-variant" size={14} />

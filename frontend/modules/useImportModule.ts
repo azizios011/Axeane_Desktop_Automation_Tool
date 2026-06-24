@@ -14,6 +14,13 @@ export function useImportModule(setSessionId: (id: string | null) => void) {
 
   const handleFileChange = (selectedFile: File) => {
     setFile(selectedFile);
+
+    if (selectedFile.name.toLowerCase().endsWith('.pdf')) {
+      setCsvHeaders([]);
+      setRawData([]);
+      setStatus({ text: `Selected: ${selectedFile.name}. Click Parse to upload.`, color: "text-gray-500" });
+      return;
+    }
     
     // Parse CSV locally for preview
     const reader = new FileReader();

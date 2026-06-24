@@ -10,10 +10,11 @@ export const AxeaneAPI = {
   
   // Generic helper for requests
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    const isFormData = options?.body instanceof FormData;
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...options?.headers,
       },
     });

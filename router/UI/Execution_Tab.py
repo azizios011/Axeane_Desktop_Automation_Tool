@@ -78,8 +78,19 @@ class ExecutionTab:
             asyncio.set_event_loop(loop)
 
             async def _run():
-                cdp = CDPManager(cdp_settings)
-                browser, page = await cdp.get_browser_and_page()
+                cdp = None
+                if self.state.get("browser") and self.state.get("page"):
+                    browser = self.state["browser"]
+                    page = self.state["page"]
+                    self._append_log("Using existing browser connection from PWA tab.", "INFO")
+                else:
+                    cdp = CDPManager(cdp_settings)
+                    mode = cdp_settings.get("mode", "Launch PWA (CDP)")
+                    if mode == "Launch PWA (CDP)":
+                        browser, page = await cdp.launch_pwa_cdp()
+                    else:
+                        browser, page = await cdp.connect_cdp()
+                
                 try:
                     # Navigate to the Saisie des écritures screen
                     if "ecritureComponentModele" not in page.url:
@@ -111,7 +122,8 @@ class ExecutionTab:
                 except Exception as e:
                     self._append_log(f"❌ Fatal: {e}", "ERROR")
                 finally:
-                    await cdp.cleanup(browser)
+                    if cdp:
+                        await cdp.cleanup()
 
             loop.run_until_complete(_run())
             loop.close()
