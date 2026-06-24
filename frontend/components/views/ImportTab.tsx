@@ -7,14 +7,21 @@ import {
 } from 'lucide-react';
 import { useImportModule } from '@/modules/useImportModule';
 import { DOCUMENT_TYPES } from '@/metadata/importSettings';
+import { TabState } from '@/app/page';
 
-export function ImportTab() {
+interface ImportTabProps {
+  sessionId: string | null;
+  setSessionId: (id: string | null) => void;
+  onChangeTab: (tab: TabState) => void;
+}
+
+export function ImportTab({ sessionId, setSessionId, onChangeTab }: ImportTabProps) {
   const { 
     docType, setDocType, 
-    filePath, handleBrowse, 
+    file, handleFileChange, 
     isParsing, handleStartParsing,
     status, rawData, csvHeaders
-  } = useImportModule();
+  } = useImportModule(setSessionId);
 
   return (
     <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
@@ -36,16 +43,24 @@ export function ImportTab() {
               <input 
                 type="text" 
                 readOnly
-                value={filePath}
+                value={file ? file.name : ""}
                 placeholder="No file selected..."
-                className="flex-1 bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2 text-xs font-mono outline-none" 
+                className="flex-1 bg-surface-container-low border border-outline-variant rounded-xl px-4 py-2 text-xs font-mono outline-none truncate" 
               />
-              <button 
-                onClick={handleBrowse}
-                className="bg-surface-container-high border border-outline-variant px-4 py-2 rounded-xl text-xs font-bold hover:bg-surface-variant transition-colors"
+              <label 
+                className="bg-surface-container-high border border-outline-variant px-4 py-2 rounded-xl text-xs font-bold hover:bg-surface-variant transition-colors cursor-pointer flex items-center justify-center"
               >
                 Browse
-              </button>
+                <input 
+                  type="file" 
+                  accept=".csv"
+                  className="hidden" 
+                  onChange={(e) => {
+                    const selected = e.target.files?.[0];
+                    if (selected) handleFileChange(selected);
+                  }}
+                />
+              </label>
             </div>
           </div>
 
@@ -73,9 +88,9 @@ export function ImportTab() {
           {/* Action Button */}
           <div className="pt-4 space-y-4">
             <button 
-              disabled={!filePath || isParsing}
-              onClick={() => handleStartParsing(() => console.log("Next Tab"))}
-              className="w-full py-4 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg shadow-primary/20 hover:opacity-90 disabled:grayscale transition-all"
+              disabled={!file || isParsing}
+              onClick={() => handleStartParsing(() => onChangeTab('review'))}
+              className="w-full py-4 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg shadow-primary/20 hover:opacity-90 disabled:grayscale transition-all cursor-pointer"
             >
               {isParsing ? <Loader2 className="animate-spin" size={20} /> : <Settings size={20} />}
               Parse & Apply Rules

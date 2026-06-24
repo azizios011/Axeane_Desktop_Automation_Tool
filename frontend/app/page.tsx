@@ -12,6 +12,7 @@ export type TabState = 'settings' | 'pwa' | 'import' | 'review' | 'execution';
 
 export default function AxeaneApp() {
   const [currentTab, setCurrentTab] = useState<TabState>('settings');
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   return (
     // "flex" ensures the sidebar and content sit side-by-side
@@ -26,9 +27,25 @@ export default function AxeaneApp() {
       <div className="flex-1 h-full overflow-hidden relative">
         {currentTab === 'settings' && <SettingsTab />}
         {currentTab === 'pwa' && <PWATab />}
-        {currentTab === 'import' && <ImportTab />}
-        {currentTab === 'review' && <ReviewTab />}
-        {currentTab === 'execution' && <ExecutionTab />}
+        {currentTab === 'import' && (
+          <ImportTab 
+            sessionId={sessionId} 
+            setSessionId={setSessionId} 
+            onChangeTab={setCurrentTab} 
+          />
+        )}
+        {currentTab === 'review' && (
+          <ReviewTab 
+            sessionId={sessionId} 
+            onChangeTab={setCurrentTab} 
+          />
+        )}
+        {currentTab === 'execution' && (
+          <ExecutionTab 
+            sessionId={sessionId} 
+            onChangeTab={setCurrentTab} 
+          />
+        )}
       </div>
     </div>
   );

@@ -7,12 +7,53 @@ import {
 } from 'lucide-react';
 import { useExecutionModule } from '@/modules/useExecutionModule';
 import { LOG_LEVEL_COLORS } from '@/metadata/executionSettings';
+import { TabState } from '@/app/page';
 
-export function ExecutionTab() {
+interface ExecutionTabProps {
+  sessionId: string | null;
+  onChangeTab: (tab: TabState) => void;
+}
+
+export function ExecutionTab({ sessionId, onChangeTab }: ExecutionTabProps) {
   const { 
     isRunning, progress, logs, terminalRef, 
     startAutomation, stopAutomation, clearLogs 
-  } = useExecutionModule();
+  } = useExecutionModule(sessionId);
+
+  const [execMode, setExecMode] = React.useState<'dry_run' | 'live'>('dry_run');
+  const [browserMode, setBrowserMode] = React.useState<'headless' | 'visible'>('visible');
+
+  if (!sessionId) {
+    return (
+      <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
+        <header className="h-16 border-b border-outline-variant bg-surface px-6 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <Play size={20} className="text-primary" />
+            <h1 className="text-xl font-bold text-on-surface">Execution & Logs</h1>
+          </div>
+        </header>
+        <div className="flex-1 flex flex-col items-center justify-center bg-surface-container-low p-8">
+          <div className="max-w-md w-full bg-surface border border-outline-variant rounded-2xl p-8 text-center shadow-md space-y-6">
+            <div className="w-16 h-16 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center mx-auto text-primary">
+              <Play size={32} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-lg font-bold text-on-surface">No Active Session</h2>
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                You must import and parse a CSV file first before running automation.
+              </p>
+            </div>
+            <button
+              onClick={() => onChangeTab('import')}
+              className="w-full py-3 bg-primary text-white rounded-xl font-bold text-xs hover:opacity-90 transition-all shadow-md shadow-primary/20 cursor-pointer"
+            >
+              Go to Import Data
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-1 flex flex-col h-full bg-background overflow-hidden">
@@ -22,18 +63,49 @@ export function ExecutionTab() {
           <div className="flex gap-2">
             <button 
               disabled={isRunning}
-              onClick={startAutomation}
-              className="bg-green-600 text-white text-xs font-black px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 shadow-lg shadow-green-900/20 transition-all"
+              onClick={() => startAutomation(execMode, browserMode)}
+              className="bg-green-600 text-white text-xs font-black px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 shadow-lg shadow-green-900/20 transition-all cursor-pointer"
             >
               <Play size={18} /> START AUTOMATION
             </button>
             <button 
               disabled={!isRunning}
               onClick={stopAutomation}
-              className="bg-error text-white text-xs font-black px-6 py-3 rounded-xl flex items-center gap-2 hover:opacity-90 disabled:opacity-50 shadow-lg shadow-red-900/20 transition-all"
+              className="bg-error text-white text-xs font-black px-6 py-3 rounded-xl flex items-center gap-2 hover:opacity-90 disabled:opacity-50 shadow-lg shadow-red-900/20 transition-all cursor-pointer"
             >
               <Square size={18} /> STOP
             </button>
+          </div>
+
+          <div className="h-10 w-px bg-outline-variant" />
+
+          {/* Config Selectors */}
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col">
+              <label className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Execution Mode</label>
+              <select
+                disabled={isRunning}
+                value={execMode}
+                onChange={(e) => setExecMode(e.target.value as any)}
+                className="bg-surface-container border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:border-primary cursor-pointer disabled:opacity-50"
+              >
+                <option value="dry_run">Dry Run (Simulate)</option>
+                <option value="live">Live (Fill Forms)</option>
+              </select>
+            </div>
+            
+            <div className="flex flex-col">
+              <label className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Browser Visibility</label>
+              <select
+                disabled={isRunning}
+                value={browserMode}
+                onChange={(e) => setBrowserMode(e.target.value as any)}
+                className="bg-surface-container border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:border-primary cursor-pointer disabled:opacity-50"
+              >
+                <option value="headless">Headless (Background)</option>
+                <option value="visible">Visible (Open Browser)</option>
+              </select>
+            </div>
           </div>
 
           <div className="h-10 w-px bg-outline-variant" />

@@ -4,6 +4,7 @@ export const LOG_LEVEL_COLORS = {
   SUCCESS: 'text-[#6a9955]', // Green
   ERROR: 'text-[#f44747]',   // Red
   NETWORK: 'text-[#569cd6]', // Blue
+  WARNING: 'text-[#cca700]', // Yellow/Orange
   SYSTEM: 'text-[#d4d4d4]'   // Gray/White
 } as const;
 

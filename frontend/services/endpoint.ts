@@ -54,10 +54,14 @@ export const AxeaneAPI = {
   },
 
   // 4. Start Automation (Execution Tab)
-  async startAutomation(sessionId: string, mode: 'live' | 'dry_run') {
+  async startAutomation(sessionId: string, mode: 'live' | 'dry_run', browserMode: 'headless' | 'visible' = 'headless') {
     return this.request<any>(API_ENDPOINTS.EXECUTE, {
       method: 'POST',
-      body: JSON.stringify({ session_id: sessionId, mode: mode }),
+      body: JSON.stringify({ 
+        session_id: sessionId, 
+        mode: mode,
+        browser_mode: browserMode
+      }),
     });
   },
 
