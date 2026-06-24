@@ -82,6 +82,9 @@ class ImportTab:
         path = filedialog.askopenfilename(filetypes=[("Import files", "*.csv *.xlsx *.pdf")])
         if path:
             self.file_path.set(path)
+            if path.lower().endswith(".pdf"):
+                self.doc_type.set("Bank")
+                self._on_type_change()
 
     def _start_parsing(self):
         path = self.file_path.get()

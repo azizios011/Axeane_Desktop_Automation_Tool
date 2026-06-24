@@ -18,7 +18,7 @@ def setup_logging(verbose=False):
 
 def check_dependencies():
     """Check if required dependencies are installed"""
-    required_packages = ['playwright', 'httpx']
+    required_packages = ['playwright', 'httpx', 'pdfplumber']
     missing = []
     
     for package in required_packages:

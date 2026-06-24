@@ -16,6 +16,7 @@ export function useImportModule(setSessionId: (id: string | null) => void) {
     setFile(selectedFile);
 
     if (selectedFile.name.toLowerCase().endsWith('.pdf')) {
+      setDocType('Bank');
       setCsvHeaders([]);
       setRawData([]);
       setStatus({ text: `Selected: ${selectedFile.name}. Click Parse to upload.`, color: "text-gray-500" });
