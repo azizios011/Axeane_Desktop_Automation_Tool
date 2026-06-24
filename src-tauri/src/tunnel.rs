@@ -109,36 +109,65 @@ impl TunnelManager {
 
         thread::spawn(move || {
             info!("[tunnel] Watchdog thread started.");
+            let mut backend_grace_cycles = 6;
+            #[cfg(debug_assertions)]
+            let mut frontend_grace_cycles = 0;
 
             while running.load(Ordering::SeqCst) {
                 thread::sleep(WATCHDOG_INTERVAL);
 
                 // --- Backend health check ---
-                if !port_is_open(BACKEND_PORT) {
-                    warn!(
-                        "[tunnel] ⚠  Port {BACKEND_PORT} unreachable — \
-                         attempting backend restart…"
-                    );
-                    backend.stop();
+                if !backend.is_running() {
+                    warn!("[tunnel] ⚠  Backend process not running — starting…");
                     backend.start();
-                } else if !backend.is_running() {
-                    warn!("[tunnel] ⚠  Backend process died — restarting…");
-                    backend.start();
+                    backend_grace_cycles = 6;
+                } else if !port_is_open(BACKEND_PORT) {
+                    if backend_grace_cycles > 0 {
+                        backend_grace_cycles -= 1;
+                        info!(
+                            "[tunnel] Backend starting up (port {BACKEND_PORT} closed, grace cycles left: {backend_grace_cycles})"
+                        );
+                    } else {
+                        warn!(
+                            "[tunnel] ⚠  Port {BACKEND_PORT} unreachable after grace period — \
+                             attempting backend restart…"
+                        );
+                        backend.stop();
+                        backend.start();
+                        backend_grace_cycles = 6;
+                    }
+                } else {
+                    backend_grace_cycles = 0; // Port is open, ensure grace is cleared
                 }
 
                 // --- Frontend health check (debug only) ---
                 #[cfg(debug_assertions)]
                 {
                     if !port_is_open(FRONTEND_PORT) {
-                        warn!(
-                            "[tunnel] ⚠  Port {FRONTEND_PORT} unreachable — \
-                             attempting frontend restart…"
-                        );
-                        frontend.stop();
-                        frontend.start();
-                    } else if !frontend.is_running() {
-                        warn!("[tunnel] ⚠  Frontend process died — restarting…");
-                        frontend.start();
+                        if frontend_grace_cycles > 0 {
+                            frontend_grace_cycles -= 1;
+                            info!(
+                                "[tunnel] Frontend starting up (port {FRONTEND_PORT} closed, grace cycles left: {frontend_grace_cycles})"
+                            );
+                        } else {
+                            if frontend.is_running() {
+                                warn!(
+                                    "[tunnel] ⚠  Port {FRONTEND_PORT} unreachable but process is active — \
+                                     attempting frontend restart…"
+                                );
+                                frontend.stop();
+                                frontend.start();
+                            } else {
+                                warn!(
+                                    "[tunnel] ⚠  Port {FRONTEND_PORT} unreachable and process not active — \
+                                     starting frontend…"
+                                );
+                                frontend.start();
+                            }
+                            frontend_grace_cycles = 6;
+                        }
+                    } else {
+                        frontend_grace_cycles = 0; // Port is open, ensure grace is cleared
                     }
                 }
             }
