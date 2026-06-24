@@ -58,6 +58,7 @@ def main():
         "config": {
             "username": "",
             "password": "",
+            "auto_login": False,
             "entreprise": "CPR",
             "exercice": "2026",
             "cdp_settings": {

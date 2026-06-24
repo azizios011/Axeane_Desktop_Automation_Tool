@@ -25,6 +25,10 @@ class SettingsTab:
         ttk.Label(form_frame, text="Password:").grid(row=1, column=0, sticky="w", pady=5)
         self.entry_pwd = ttk.Entry(form_frame, width=30, show="*")
         self.entry_pwd.grid(row=1, column=1, padx=10, pady=5)
+        
+        self.var_auto_login = tk.BooleanVar(value=self.state["config"].get("auto_login", False))
+        self.check_auto_login = ttk.Checkbutton(form_frame, text="Enable Auto-Login & Context Setup", variable=self.var_auto_login)
+        self.check_auto_login.grid(row=2, column=0, columnspan=2, sticky="w", padx=10, pady=5)
 
         # Frame for Context
         ctx_frame = ttk.LabelFrame(self.frame, text="Accounting Context", padding=20)
@@ -47,6 +51,7 @@ class SettingsTab:
     def _save_config(self):
         self.state["config"]["username"] = self.entry_user.get()
         self.state["config"]["password"] = self.entry_pwd.get()
+        self.state["config"]["auto_login"] = self.var_auto_login.get()
         self.state["config"]["entreprise"] = self.combo_ent.get()
         self.state["config"]["exercice"] = self.combo_ex.get()
         # You can add a quick tooltip or status label here confirming save

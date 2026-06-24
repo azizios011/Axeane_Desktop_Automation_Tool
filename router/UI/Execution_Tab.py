@@ -92,10 +92,15 @@ class ExecutionTab:
                         browser, page = await cdp.connect_cdp()
                 
                 try:
+                    # Execute Auto-Login if enabled
+                    if self.state["config"].get("auto_login", False):
+                        from Modules.auth import setup_context
+                        await setup_context(page, self.state["config"], self._append_log)
+
                     # Navigate to the Saisie des écritures screen
                     if "ecritureComponentModele" not in page.url:
                         self._append_log("Navigating to Saisie des écritures...", "INFO")
-                        await page.goto("https://kompta.axeane.com/views/comptageneral/traitement/ecritures/ecranEcritureMainModele2.html")
+                        await page.goto("https://kompta.axeane.com/#/comptageneral/traitement/ecritures/ecritureComponentModele")
                         await page.wait_for_timeout(3000)
 
                     # Initialize the orchestrator
